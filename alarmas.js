@@ -107,7 +107,7 @@ function crearOverlay() {
   overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.setIgnoreMouseEvents(true);
   colocarOverlay();
-  overlay.loadFile(path.join(__dirname, 'overlay.html'));
+  overlay.loadFile(path.join(__dirname, 'overlay.html'), HUMO ? { query: { humo: '1' } } : {}); // en la prueba de humo no suena
   overlay.once('ready-to-show', () => overlay.showInactive());
 }
 

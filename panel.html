@@ -18,6 +18,7 @@
     <button role="tab" id="t-correo" data-tab="correo" aria-controls="p-correo" aria-selected="false"><i>✉️</i><span>Correo</span><b class="globo" id="chip" hidden></b></button>
     <button role="tab" id="t-agenda" data-tab="agenda" aria-controls="p-agenda" aria-selected="false"><i>📅</i><span>Agenda</span></button>
     <button role="tab" id="t-tiempo" data-tab="tiempo" aria-controls="p-tiempo" aria-selected="false"><i>🌤️</i><span>Tiempo</span></button>
+    <button role="tab" id="t-notas" data-tab="notas" aria-controls="p-notas" aria-selected="false"><i>📝</i><span>Notas</span></button>
     <button role="tab" id="t-sistema" data-tab="sistema" aria-controls="p-sistema" aria-selected="false"><i>📊</i><span>Sistema</span></button>
   </nav>
   <div id="paneles">
@@ -41,6 +42,8 @@
     <section class="pestana" id="p-correo" role="tabpanel" aria-labelledby="t-correo" hidden>
       <h2>Bandeja de entrada <span id="obs" class="aviso"></span></h2>
       <div id="cbarra" hidden><span id="cn"></span><button class="btn-sec" id="c-leer">Marcar como leído</button><button class="btn-sec" id="c-todo">Seleccionar todo</button><button class="btn-sec" id="c-nada">Cancelar</button></div>
+      <div id="cbuzon"><button class="btn-sec" id="c-buzon" title="Marca como leídos los correos sin leer de todas las carpetas">Marcar todo el buzón como leído</button>
+        <div id="c-conf" hidden><span id="c-conf-t"></span><button class="btn-txt" id="c-conf-ok">Sí, marcar</button><button class="btn-sec" id="c-conf-no">Cancelar</button></div></div>
       <div id="correo"><div class="vacio">Cargando…</div></div>
     </section>
     <section class="pestana" id="p-agenda" role="tabpanel" aria-labelledby="t-agenda" hidden>
@@ -56,6 +59,15 @@
       </form>
       <div id="agenda"></div></section>
     <section class="pestana" id="p-tiempo" role="tabpanel" aria-labelledby="t-tiempo" hidden><div id="tiempo"><div class="vacio">Cargando el tiempo…</div></div></section>
+    <section class="pestana" id="p-notas" role="tabpanel" aria-labelledby="t-notas" hidden>
+      <h2><span>Notas rápidas</span> <span id="nt-n" class="aviso"></span></h2>
+      <form id="nt-form" class="tarjeta" autocomplete="off">
+        <label for="nt-texto" class="sr">Nueva nota</label>
+        <textarea id="nt-texto" class="campo" rows="3" maxlength="5000" placeholder="Escribe una nota… (Ctrl+Intro para guardar)"></textarea>
+        <div class="ev-fila"><button type="submit" class="btn-txt">Guardar nota</button></div>
+      </form>
+      <div id="nt-lista"></div>
+    </section>
     <section class="pestana" id="p-sistema" role="tabpanel" aria-labelledby="t-sistema" hidden><div id="sistema"></div></section>
   </div>
 </main>
