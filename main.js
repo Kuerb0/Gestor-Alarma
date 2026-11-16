@@ -156,20 +156,23 @@ async function buscar(aMano) {
 }
 async function instalarAct() {
   if (!nueva || ocupado) return;
-  if (!app.isPackaged) { aviso('Versión de desarrollo: actualiza con git pull'); return; }
+  if (!LANZADOR) { aviso('Versión de desarrollo: actualiza con git pull'); return; }
   ocupado = true; estadoAct('descargando');
   try { const f = await Act.descargar(nueva); estadoAct('instalando'); Act.instalar(f); setTimeout(() => app.quit(), 500); } // el instalador cierra y reabre la app
   catch (e) { log('actualizar ' + e.message); ocupado = false; estadoAct('error', 'No se pudo actualizar'); aviso('No se pudo actualizar: ' + e.message); }
 }
 
 // ---- inicio con Windows y bandeja
+// Copia instalada = la del instalador de herramientas-apps (<carpeta>\GestorAlarma.exe + <carpeta>\app\). Corre con un electron.exe normal,
+// así que app.isPackaged es siempre false: no sirve para distinguirla de la copia de desarrollo.
+const LANZADOR = (f => fs.existsSync(f) ? f : null)(path.join(__dirname, '..', 'GestorAlarma.exe'));
 const LNK = () => path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Gestor-Alarma.lnk');
 function aplicarInicio() { // acceso directo en la carpeta Inicio (la entrada de Run la omite Windows en este equipo)
   if (HUMO || process.env.PANEL_SIN_INICIO === '1') return;
   try {
     app.setLoginItemSettings({ openAtLogin: false, name: 'Panel', path: process.execPath, args: [__dirname] }); // borra la entrada antigua de Run
     fs.rmSync(path.join(path.dirname(LNK()), 'Panel.lnk'), { force: true }); // acceso directo del nombre anterior
-    if (ajustes.iniciarConWindows) shell.writeShortcutLink(LNK(), 'create', { target: process.execPath, args: app.isPackaged ? '' : `"${__dirname}"`, cwd: __dirname, icon: app.isPackaged ? process.execPath : path.join(__dirname, 'assets', 'icon.ico') });
+    if (ajustes.iniciarConWindows) shell.writeShortcutLink(LNK(), 'create', { target: LANZADOR || process.execPath, args: LANZADOR ? '' : `"${__dirname}"`, cwd: __dirname, icon: path.join(__dirname, 'assets', 'icon.ico') });
     else fs.rmSync(LNK(), { force: true });
   } catch (e) { log('inicio ' + e.message); }
 }
