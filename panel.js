@@ -253,6 +253,13 @@ api.on('correo', pintaCorreo);
 api.on('meteo', r => { meteo = r; meteoT = Date.now(); pintaMeteo(); });
 api.on('pestana', n => ir(n));
 api.on('tema', t => t && /^#[0-9a-f]{6}$/i.test(t.acento) && document.documentElement.style.setProperty('--acento', t.acento));
+api.on('actualizacion', a => { // pastilla «Nueva versión X» (solo si hay y no es pantalla completa)
+  $('nueva').hidden = !a; if (!a) return;
+  const ocupado = a.estado === 'descargando' || a.estado === 'instalando';
+  $('nueva-txt').textContent = a.estado === 'descargando' ? 'Descargando…' : a.estado === 'instalando' ? 'Instalando…' : a.estado === 'error' ? a.mensaje || 'Error' : 'Nueva versión ' + a.version;
+  $('nueva-ok').textContent = a.estado === 'error' ? 'Reintentar' : 'Actualizar'; $('nueva-ok').hidden = $('nueva-tarde').hidden = ocupado;
+});
+$('nueva-ok').onclick = () => api.instalarActualizacion(); $('nueva-tarde').onclick = () => api.masTarde();
 api.on('sistema', s => { sis = s; pintaSistema(); });
 api.on('estado', e => { document.body.classList.toggle('abierto', e.abierto); $('pin').classList.toggle('on', e.fijado); $('pin').setAttribute('aria-pressed', !!e.fijado); if (e.abierto) reloj(); });
 reloj(); pintaAgenda();

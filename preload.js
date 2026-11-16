@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema'];
+const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema', 'actualizacion'];
 contextBridge.exposeInMainWorld('api', {
   on: (canal, fn) => { if (CANALES.includes(canal)) ipcRenderer.on(canal, (_, d) => fn(d)); },
   abrirCorreo: id => ipcRenderer.send('abrir-correo', id),
@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('api', {
   fijar: b => ipcRenderer.send('fijar', !!b),
   actualizar: () => ipcRenderer.send('actualizar'),
   cerrar: () => ipcRenderer.send('cerrar'),
+  instalarActualizacion: () => ipcRenderer.send('actualizacion:instalar'),
+  masTarde: () => ipcRenderer.send('actualizacion:tarde'),
 });
 // API del motor de alarmas (la usan la pestaña Alarmas y el overlay)
 contextBridge.exposeInMainWorld('alarmas', {

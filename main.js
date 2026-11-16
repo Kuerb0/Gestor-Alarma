@@ -1,5 +1,6 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences, Notification } = require('electron');
 const fs = require('fs'), path = require('path'), { spawn } = require('child_process');
+const Act = require('./actualizar'); // versiones nuevas en GitHub Releases
 const Alarmas = require('./alarmas'); // motor del antiguo Gestor-Alarmas (overlay, datos, Post-It/Outlook)
 
 const HUMO = process.argv.includes('--humo'); // prueba: userData temporal, datos inventados, captura y salir
@@ -124,6 +125,7 @@ function aplicarCompleta() {
   if (completa && abierto && !ajustes.fijado) poner(false);
   if (raya && !raya.isDestroyed()) completa || abierto ? raya.hide() : raya.showInactive();
   const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) completa ? ov.hide() : ov.showInactive();
+  pintarAct();
 }
 function vigilarCompleta() {
   try {
@@ -133,6 +135,32 @@ function vigilarCompleta() {
   } catch (e) { log('vigía ' + e.message); }
 }
 app.on('will-quit', () => { try { vigia && vigia.kill(); } catch {} });
+
+// ---- actualización: pastilla en el panel y entradas en la bandeja; en pantalla completa no se enseña nada nuevo
+let nueva = null, estAct = 'disponible', msgAct = '', ocupado = false;
+const aviso = body => new Notification({ title: 'Gestor-Alarma', body, silent: true }).show();
+function pintarAct() {
+  enviar('actualizacion', nueva && !completa && ajustes.masTarde !== nueva.version ? { version: nueva.version, estado: estAct, mensaje: msgAct } : null);
+  tray && tray.setContextMenu(menu());
+}
+const estadoAct = (e, m = '') => { estAct = e; msgAct = m; pintarAct(); };
+async function buscar(aMano) {
+  if (ocupado) return;
+  const r = await Act.comprobar();
+  if (r.error) { log('actualización: ' + r.error); if (aMano) aviso('No se pudo comprobar las actualizaciones.'); return; }
+  if (ocupado) return;
+  nueva = r.nueva ? r : null; estAct = 'disponible'; msgAct = '';
+  if (nueva && aMano && ajustes.masTarde) { delete ajustes.masTarde; guardarAjustes(); }
+  pintarAct();
+  if (aMano && !nueva) aviso(`Tienes la última versión (${Act.VERSION}).`);
+}
+async function instalarAct() {
+  if (!nueva || ocupado) return;
+  if (!app.isPackaged) { aviso('Versión de desarrollo: actualiza con git pull'); return; }
+  ocupado = true; estadoAct('descargando');
+  try { const f = await Act.descargar(nueva); estadoAct('instalando'); Act.instalar(f); setTimeout(() => app.quit(), 500); } // el instalador cierra y reabre la app
+  catch (e) { log('actualizar ' + e.message); ocupado = false; estadoAct('error', 'No se pudo actualizar'); aviso('No se pudo actualizar: ' + e.message); }
+}
 
 // ---- inicio con Windows y bandeja
 const LNK = () => path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Gestor-Alarma.lnk');
@@ -149,6 +177,8 @@ const menu = () => Menu.buildFromTemplate([
   { label: 'Abrir panel', click: abrir },
   { label: 'Fijar abierto', type: 'checkbox', checked: !!ajustes.fijado, click: i => fijar(i.checked) },
   { label: 'Actualizar ahora', click: actualizar },
+  ...(nueva ? [{ label: `Actualizar a la ${nueva.version}…`, click: instalarAct }] : []),
+  { label: 'Buscar actualizaciones…', click: () => buscar(true) },
   { type: 'separator' },
   ...Alarmas.menuItems(),
   { type: 'separator' },
@@ -185,6 +215,8 @@ ipcMain.on('abrir-outlook', () => { try { spawn('cmd', ['/c', 'start', '', 'outl
 ipcMain.on('fijar', (_, b) => fijar(b === true));
 ipcMain.on('actualizar', actualizar);
 ipcMain.on('cerrar', cerrar);
+ipcMain.on('actualizacion:instalar', instalarAct);
+ipcMain.on('actualizacion:tarde', () => { if (nueva && !ocupado) { ajustes.masTarde = nueva.version; guardarAjustes(); pintarAct(); } });
 
 app.whenReady().then(async () => {
   AJUSTES = path.join(app.getPath('userData'), 'ajustes.json');
@@ -201,6 +233,7 @@ app.whenReady().then(async () => {
   vigilarCompleta();
   estado(); if (ajustes.fijado) abrir();
   actualizar();
+  setTimeout(() => buscar(false), 20e3); setInterval(() => buscar(false), 6 * 36e5);
   setInterval(leerCorreo, 6e4); setInterval(leerMeteo, 18e5);
 });
 app.on('will-quit', () => globalShortcut.unregisterAll());
@@ -230,6 +263,7 @@ async function humo() {
     dias: nd.map((n, i) => ({ fecha: iso(ahora + i * d).slice(0, 10), nombre: n, max: 20 + i, min: 9 + i, icono: ic[i], texto: '', lluvia: i * 15 })) });
   Alarmas.datosHumo();
   enviar('sistema', { cpu: 23, ramUsada: 9.5e9, ramTotal: 16e9, discoLibre: 180e9, discoTotal: 500e9 });
+  nueva = { version: '9.9.9' }; pintarAct(); // pastilla de «versión nueva» inventada
   abrir();
   await new Promise(r => setTimeout(r, 1500));
   const salida = path.join(require('os').tmpdir(), 'panel-humo'); fs.mkdirSync(salida, { recursive: true });
@@ -265,6 +299,10 @@ async function humo() {
   const nev = await n(win, '.evento'); if (nev !== 10) fallos.push(`.evento tras crear: ${nev} (esperadas 10)`);
   await js(win, `document.querySelector('.diah[data-i="2"]').click()`);
   if (!/Día:/.test(await js(win, `document.getElementById('ev-vista').textContent`))) fallos.push('clic en el día no abre el formulario con ese día');
+  if (await js(win, `document.getElementById('nueva')?.hidden`) !== false) fallos.push('la pastilla de versión nueva no se ve');
+  completa = true; pintarAct(); await esp(200);
+  if (await js(win, `document.getElementById('nueva')?.hidden`) !== true) fallos.push('la pastilla sigue en pantalla completa');
+  completa = false;
   const tarjetas = await n(Alarmas.overlay(), '.tarjeta');
   if (tarjetas !== 5) fallos.push('tarjetas visibles: ' + tarjetas + ' (esperadas 5)');
   console.log(fallos.length ? 'HUMO FALLA\n' + fallos.join('\n') : 'HUMO OK · capturas en ' + salida);

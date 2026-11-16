@@ -17,6 +17,9 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 #hora { font-size: 34px; font-weight: 300; line-height: 1; letter-spacing: -1px; }
 #fecha { color: var(--sec); margin-top: 4px; } #fecha::first-letter { text-transform: uppercase; }
 .botones { display: flex; gap: 6px; }
+.pastilla { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 3px 3px 3px 12px; border-radius: 999px; font-size: 12px; background: var(--ac-v); box-shadow: 0 4px 12px var(--sombra); }
+.pastilla[hidden], .pastilla .boton[hidden] { display: none; }
+.pastilla .boton { width: auto; height: 22px; padding: 0 10px; border-radius: 999px; font-size: 12px; color: var(--txt); background: var(--vidrio-h); }
 button { background: none; border: 0; color: var(--sec); font: inherit; font-size: 17px; width: 32px; height: 32px; border-radius: 12px; cursor: pointer; transition: background .15s, box-shadow .15s, color .15s, transform .15s; }
 button:hover { background: var(--vidrio-h); color: var(--txt); }
 button:active { transform: scale(.94); }
