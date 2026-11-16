@@ -142,15 +142,31 @@ $('c-todo').onclick = () => { filas().forEach(f => sel.add(f.dataset.id)); marca
 $('c-nada').onclick = () => { sel.clear(); ancla = -1; marcaSel(); };
 
 // ---- agenda
+const SVG_PIN = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16.5V22"/><path d="M8.5 3h7l-1 6.5 3 3.2V15h-12v-2.3l3-3.2z"/></svg>';
+let alarmasL = [];
+const alarmaMs = e => e.todoDia ? dia0(new Date(e.inicio)).getTime() + 9 * 36e5 : new Date(e.inicio).getTime(); // todo el día: a las 09:00
+const tituloEv = el => el.querySelector('.tt').firstChild.textContent;
+const alarmaDe = el => alarmasL.find(a => a.tipo === 'fecha' && !a.origen && a.objetivo === +el.dataset.ms && a.nombre === tituloEv(el).replace(/\s+/g, ' ').trim().slice(0, 60));
+function marcaEventos() { document.querySelectorAll('#agenda .evento').forEach(el => el.querySelector('.pin-ev').setAttribute('aria-pressed', !!alarmaDe(el))); }
+async function evAlarma(el) { // alterna la alarma del Gestor de este evento
+  const a = alarmaDe(el), ms = +el.dataset.ms;
+  if (a) { await window.alarmas.borrar(a.id); return evAviso('Alarma quitada'); }
+  if (ms <= Date.now()) return evAviso('Ya ha pasado');
+  const g = await window.alarmas.crear({ nombre: tituloEv(el), tipo: 'fecha', objetivo: ms });
+  if (!g.ok) return evAviso(g.error);
+  const d = new Date(ms);
+  evAviso('Alarma puesta ' + (dia0(d).getTime() === dia0(new Date()).getTime() ? '' : 'el ' + evFecha(d) + ' ') + 'a las ' + hhmm(d));
+}
 function pintaAgenda() {
   const h = dia0(new Date()), eventos = correo && correo.ok ? correo.agenda || [] : [];
   const nombre = (d, i) => i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }).replace(/^./, c => c.toUpperCase());
   const dia = i => {
     const d = new Date(h.getFullYear(), h.getMonth(), h.getDate() + i), ini = d.getTime(), f = new Date(h.getFullYear(), h.getMonth(), h.getDate() + i + 1).getTime();
     const ev = eventos.filter(e => { const a = new Date(e.inicio).getTime(), b = new Date(e.fin || e.inicio).getTime(); return a < f && Math.max(b, a + 1) > ini; }).sort((x, y) => new Date(x.inicio) - new Date(y.inicio));
-    return `<div class="diah" role="button" tabindex="0" data-i="${i}" title="Añadir evento este día">${nombre(d, i)}</div>` + (ev.length ? ev.map(e => `<div class="evento"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}</div>`).join('') : '<div class="vacio">Sin eventos</div>');
+    return `<div class="diah" role="button" tabindex="0" data-i="${i}" title="Añadir evento este día">${nombre(d, i)}</div>` + (ev.length ? ev.map(e => `<div class="evento" tabindex="0" data-ms="${alarmaMs(e)}"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}<button class="pin-ev" aria-pressed="false" aria-label="Poner como alarma: ${esc(e.titulo)}" title="Poner como alarma">${SVG_PIN}</button></div>`).join('') : '<div class="vacio">Sin eventos</div>');
   };
   $('agenda').innerHTML = Array.from({ length: 7 }, (_, i) => dia(i)).join('');
+  marcaEventos();
   $('agenda').querySelectorAll('.evento[data-c]').forEach(el => el.style.setProperty('--c', el.dataset.c)); // CSP: sin style inline en el HTML
 }
 
@@ -231,6 +247,10 @@ const evDiaClic = e => {
   e.preventDefault(); const h = dia0(new Date()); evAbrir(new Date(h.getFullYear(), h.getMonth(), h.getDate() + +d.dataset.i));
 };
 $('agenda').addEventListener('click', evDiaClic); $('agenda').addEventListener('keydown', evDiaClic);
+
+$('agenda').addEventListener('click', e => { const el = e.target.closest('.evento'); if (el) evAlarma(el); });
+$('agenda').addEventListener('keydown', e => { if (e.target.classList.contains('evento') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); evAlarma(e.target); } });
+if (window.alarmas) { window.alarmas.lista().then(l => { alarmasL = l; marcaEventos(); }); window.alarmas.alCambiar(l => { alarmasL = l; marcaEventos(); }); }
 
 // ---- sistema
 const barra = (n, v, txt, inv) => `<div class="barra">${n} · ${txt}<progress max="100" value="${Math.min(100, Math.max(0, Math.round(v)))}" class="${(inv ? v < 15 : v > 85) ? 'alto' : ''}"></progress></div>`;

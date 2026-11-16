@@ -287,6 +287,19 @@ async function humo() {
   await captura('overlay', Alarmas.overlay());
   const n = (w, s) => js(w, `document.querySelectorAll('${s}').length`);
   for (const [s, esperadas] of [['.fila', 12], ['.fila-correo', 8], ['.evento', 9]]) { const v = await n(win, s); if (v !== esperadas) fallos.push(`${s}: ${v} (esperadas ${esperadas})`); }
+  // chincheta de la Agenda: primer evento futuro con hora -> alarma nueva (.fila +1, aria-pressed) y alternar de vuelta
+  await js(win, `document.querySelector('button[data-tab="agenda"]').click()`); await esp(300);
+  const pin = `[...document.querySelectorAll('#agenda .evento')].find(e => +e.dataset.ms > Date.now() && e.querySelector('.h').textContent !== 'Todo el día').querySelector('.pin-ev')`;
+  const f0 = await n(win, '.fila'); await js(win, `${pin}.click()`); await esp(600);
+  if (await n(win, '.fila') !== f0 + 1) fallos.push('chincheta: no aparece la alarma en Alarmas');
+  if (await js(win, `${pin}.getAttribute('aria-pressed')`) !== 'true') fallos.push('chincheta: no queda activa');
+  await captura('panel-agenda-chincheta-claro', win);
+  nativeTheme.themeSource = 'system'; await esp(400); await captura('panel-agenda-chincheta', win);
+  nativeTheme.themeSource = 'light'; await esp(300);
+  await js(win, `${pin}.click()`); await esp(600);
+  if (await n(win, '.fila') !== f0) fallos.push('chincheta: no se quita la alarma');
+  if (await js(win, `${pin}.getAttribute('aria-pressed')`) !== 'false') fallos.push('chincheta: sigue activa tras quitar');
+
   // nuevo evento: abrir formulario, escribir, elegir la primera etiqueta, capturas (claro y oscuro) y crear
   await js(win, `document.querySelector('button[data-tab="agenda"]').click()`); await esp(300);
   await js(win, `document.getElementById('ev-abrir').click()`);

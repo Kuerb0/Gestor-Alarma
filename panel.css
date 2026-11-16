@@ -125,6 +125,11 @@ h2 { font-size: 12px; font-weight: 600; color: var(--sec); text-transform: upper
 .evento .h { color: var(--sec); flex: none; width: 92px; }
 .evento .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .evento .tt small { display: block; color: var(--sec); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+/* chincheta de alarma en cada evento */
+.evento { cursor: pointer; } .evento:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.pin-ev { flex: none; align-self: center; width: 24px; height: 24px; border-radius: 8px; opacity: .4; transition: opacity .15s, background .15s, color .15s; }
+.evento:hover .pin-ev, .pin-ev:focus-visible, .pin-ev[aria-pressed=true] { opacity: 1; }
+.pin-ev[aria-pressed=true] { color: var(--ac-t); } .pin-ev[aria-pressed=true] svg { fill: currentColor; fill-opacity: .85; }
 /* sistema */
 .barras { display: grid; gap: 12px; }
 .barra { font-size: 13px; color: var(--sec); border-radius: 22px; padding: 12px 14px; }
