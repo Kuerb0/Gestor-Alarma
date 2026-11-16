@@ -113,6 +113,8 @@ h2 { font-size: 12px; font-weight: 600; color: var(--sec); text-transform: upper
 .fila-correo .as { grid-column: 2 / 4; color: var(--sec); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn-txt { width: auto; padding: 0 14px; font-size: 13px; font-weight: 600; background: var(--ac-v); color: var(--txt); margin-top: 6px; border-radius: 19px; }
 .btn-txt:hover { background: color-mix(in srgb, var(--acento) 55%, transparent); color: var(--txt); box-shadow: 0 0 16px var(--ac-v), 0 6px 18px var(--sombra); }
+#agenda .fino { font-size: 12px; margin: 8px 0 2px; opacity: .75; } .semh { color: var(--sec); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; margin: 14px 0 2px; border-top: 1px solid var(--vidrio-h); padding-top: 6px; }
+#ag-mas { display: block; margin: 12px auto 8px; height: 32px; } #ag-mas:disabled { opacity: .6; cursor: default; }
 .diah { color: var(--ac-t); font-weight: 600; font-size: 12px; margin: 10px 0 3px; }
 #agenda > .diah:first-child { margin-top: 2px; }
 .evento { display: flex; gap: 10px; padding: 7px 10px; border-radius: 17px; margin-bottom: 5px; }

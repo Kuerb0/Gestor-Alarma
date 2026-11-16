@@ -13,6 +13,9 @@ assert.strictEqual(r.correos.length, 2); assert.strictEqual(r.correos[1].leido, 
 assert.strictEqual(normalizar('basura').ok, false);
 assert.strictEqual(normalizar('{"ok":false}').motivo, 'error');
 
+// leer: valida `dias` antes de llamar a Outlook (sin tocarlo)
+(async () => { const { leer } = require('../correo'); for (const mal of [0, 121, 1.5, '7', null, NaN]) { const x = await leer({ dias: mal }); assert.strictEqual(x.ok, false, 'dias ' + mal); assert.match(x.detalle, /dias/); } })();
+
 // wmo
 assert.strictEqual(wmo(0).icono, '☀️'); assert.strictEqual(wmo(3).texto, 'Nublado');
 assert.strictEqual(wmo(48).texto, 'Niebla'); assert.strictEqual(wmo(63).texto, 'Lluvia');

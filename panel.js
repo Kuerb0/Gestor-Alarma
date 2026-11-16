@@ -157,17 +157,39 @@ async function evAlarma(el) { // alterna la alarma del Gestor de este evento
   const d = new Date(ms);
   evAviso('Alarma puesta ' + (dia0(d).getTime() === dia0(new Date()).getTime() ? '' : 'el ' + evFecha(d) + ' ') + 'a las ' + hhmm(d));
 }
+let agN = 7, agCarga = false, agScroll = false, agObs = null, agTimer = null; // días pintados · pidiendo más · el usuario ha hecho scroll · observador del botón
+const AG_MAX = 120;
+function agMas() { if (agCarga || agN >= AG_MAX) return; agCarga = true; agScroll = false; clearTimeout(agTimer); agTimer = setTimeout(() => { agCarga = false; pintaAgenda(); }, 3e4); $('ag-mas').textContent = 'Cargando…'; $('ag-mas').disabled = true; api.agendaMas(); }
+$('p-agenda').addEventListener('scroll', () => { agScroll = true; }, { passive: true });
+$('agenda').addEventListener('click', e => { if (e.target.closest('#ag-mas')) agMas(); });
 function pintaAgenda() {
-  const h = dia0(new Date()), eventos = correo && correo.ok ? correo.agenda || [] : [];
-  const nombre = (d, i) => i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }).replace(/^./, c => c.toUpperCase());
-  const dia = i => {
-    const d = new Date(h.getFullYear(), h.getMonth(), h.getDate() + i), ini = d.getTime(), f = new Date(h.getFullYear(), h.getMonth(), h.getDate() + i + 1).getTime();
-    const ev = eventos.filter(e => { const a = new Date(e.inicio).getTime(), b = new Date(e.fin || e.inicio).getTime(); return a < f && Math.max(b, a + 1) > ini; }).sort((x, y) => new Date(x.inicio) - new Date(y.inicio));
-    return `<div class="diah" role="button" tabindex="0" data-i="${i}" title="Añadir evento este día">${nombre(d, i)}</div>` + (ev.length ? ev.map(e => `<div class="evento" tabindex="0" data-ms="${alarmaMs(e)}"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}<button class="pin-ev" aria-pressed="false" aria-label="Poner como alarma: ${esc(e.titulo)}" title="Poner como alarma">${SVG_PIN}</button></div>`).join('') : '<div class="vacio">Sin eventos</div>');
-  };
-  $('agenda').innerHTML = Array.from({ length: 7 }, (_, i) => dia(i)).join('');
+  const h = dia0(new Date()), eventos = correo && correo.ok ? correo.agenda || [] : [], n = correo && correo.ok && correo.dias || 7, top = $('p-agenda').scrollTop;
+  const fecha = i => new Date(h.getFullYear(), h.getMonth(), h.getDate() + i);
+  const largo = d => d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' });
+  const nombre = (d, i) => i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : largo(d).replace(/^./, c => c.toUpperCase());
+  const evDe = i => { const ini = fecha(i).getTime(), f = fecha(i + 1).getTime(); return eventos.filter(e => { const a = new Date(e.inicio).getTime(), b = new Date(e.fin || e.inicio).getTime(); return a < f && Math.max(b, a + 1) > ini; }).sort((x, y) => new Date(x.inicio) - new Date(y.inicio)); };
+  const dia = (i, ev) => `<div class="diah" role="button" tabindex="0" data-i="${i}" title="Añadir evento este día">${nombre(fecha(i), i)}</div>` + (ev.length ? ev.map(e => `<div class="evento" tabindex="0" data-ms="${alarmaMs(e)}"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}<button class="pin-ev" aria-pressed="false" aria-label="Poner como alarma: ${esc(e.titulo)}" title="Poner como alarma">${SVG_PIN}</button></div>`).join('') : '<div class="vacio">Sin eventos</div>');
+  let html = '', ini = -1, fin = -1; // racha de días vacíos (desde el día 8 se agrupan en una línea)
+  const cierra = () => { if (ini >= 0) html += `<div class="vacio fino">Sin eventos ${ini === fin ? 'el' : 'hasta el'} ${largo(fecha(fin))}</div>`; ini = fin = -1; };
+  for (let i = 0; i < n; i++) {
+    const d = fecha(i), ev = evDe(i);
+    if (i >= 7) { // separador discreto: mes nuevo, o lunes (semana nueva)
+      const sep = d.getDate() === 1 ? d.toLocaleDateString('es-ES', { month: 'long' }).replace(/^./, c => c.toUpperCase()) : d.getDay() === 1 ? 'Semana del ' + d.getDate() : '';
+      if (sep) { cierra(); html += `<div class="semh">${sep}</div>`; }
+    }
+    if (i >= 7 && !ev.length) { if (ini < 0) ini = i; fin = i; continue; }
+    cierra(); html += dia(i, ev);
+  }
+  cierra();
+  agN = n; $('ag-dias').textContent = n;
+  if (n < AG_MAX) html += `<button id="ag-mas" class="btn-txt"${agCarga ? ' disabled' : ''}>${agCarga ? 'Cargando…' : 'Cargar 2 semanas más'}</button>`;
+  $('agenda').innerHTML = html;
+  $('p-agenda').scrollTop = top;
   marcaEventos();
   $('agenda').querySelectorAll('.evento[data-c]').forEach(el => el.style.setProperty('--c', el.dataset.c)); // CSP: sin style inline en el HTML
+  if (agObs) agObs.disconnect();
+  const bt = $('ag-mas');
+  if (bt && window.IntersectionObserver) { agObs = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting) && agScroll && !agCarga) agMas(); }, { root: $('p-agenda') }); agObs.observe(bt); } // carga sola al llegar al fondo (solo tras un scroll del usuario)
 }
 
 // ---- nuevo evento (formulario de la Agenda)
@@ -269,7 +291,7 @@ function pintaSistema() {
 if (navigator.getBattery) navigator.getBattery().then(b => { bateria = b; b.onlevelchange = b.onchargingchange = pintaSistema; pintaSistema(); }).catch(() => {});
 
 // ---- IPC
-api.on('correo', pintaCorreo);
+api.on('correo', r => { if (!r || !r.ok || r.obsoleto || (r.dias || 7) > agN) { agCarga = false; clearTimeout(agTimer); } pintaCorreo(r); });
 api.on('meteo', r => { meteo = r; meteoT = Date.now(); pintaMeteo(); });
 api.on('pestana', n => ir(n));
 api.on('tema', t => t && /^#[0-9a-f]{6}$/i.test(t.acento) && document.documentElement.style.setProperty('--acento', t.acento));

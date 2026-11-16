@@ -1,11 +1,12 @@
 # Lee Outlook clásico ya abierto (bandeja de entrada + agenda de los próximos 7 días) y lo escribe como JSON. Lo llama correo.js.
 # Uso: outlook.ps1            -> lee correos y agenda
+#      outlook.ps1 -Dias N    -> agenda de N días (1–120, por defecto 7)
 #      outlook.ps1 -Abrir ID  -> abre ese elemento (EntryID) y trae Outlook al frente
 #      outlook.ps1 -Crear F [-Ensayo] -> crea el evento del JSON F {titulo,inicio,fin,todoDia,lugar,categoria} en el calendario predeterminado; salida {ok,id}.
 #                                        Con -Ensayo monta el evento pero lo descarta sin guardar: {ok,ensayo}
 #      outlook.ps1 -Leidos F  -> marca como leídos los EntryIDs del array JSON del fichero F; salida {ok,hechos,fallos}
 # Códigos de salida: 0 = ok · 3 = Outlook cerrado (no se abre solo) · 4 = Outlook no instalado · 5 = otro error
-param([string]$Abrir, [string]$Leidos, [string]$Crear, [switch]$Ensayo)
+param([string]$Abrir, [string]$Leidos, [string]$Crear, [switch]$Ensayo, [int]$Dias = 7)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 
@@ -63,8 +64,9 @@ try {
     $it = $its.GetNext()
   }
 
-  # Agenda: hoy 00:00 hasta hoy+7 días 00:00, todos los almacenes
-  $d0 = (Get-Date).Date; $d1 = $d0.AddDays(7)
+  # Agenda: hoy 00:00 hasta hoy+$Dias días 00:00 (1–120), todos los almacenes
+  $Dias = [Math]::Min(120, [Math]::Max(1, $Dias))
+  $d0 = (Get-Date).Date; $d1 = $d0.AddDays($Dias)
   $us = [Globalization.CultureInfo]::GetCultureInfo('en-US')
   $filtro = "[Start] < '" + $d1.ToString('MM/dd/yyyy hh:mm tt', $us) + "' AND [End] > '" + $d0.ToString('MM/dd/yyyy hh:mm tt', $us) + "'"
   $agenda = New-Object Collections.Generic.List[object]; $vistos = @{}; $categorias = New-Object Collections.Generic.List[object]; $nombres = @{}

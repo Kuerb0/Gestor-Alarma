@@ -30,11 +30,14 @@ function normalizar(crudo) {
   } catch (e) { return { ok: false, motivo: 'error', detalle: e.message }; }
 }
 
-async function leer() {
+// dias: cuántos días de agenda (1–120, por defecto 7); la respuesta lo incluye para que la UI sepa cuántos pintar
+async function leer({ dias = 7 } = {}) {
   try {
-    const r = await ps([]);
+    if (!Number.isInteger(dias) || dias < 1 || dias > 120) return { ok: false, motivo: 'error', detalle: 'dias no válido' };
+    const r = await ps(['-Dias', String(dias)]);
     if (r.codigo !== 0) return { ok: false, motivo: MOTIVOS[r.codigo] || 'error', detalle: r.err.trim().slice(0, 300) || undefined };
-    return normalizar(r.out);
+    const n = normalizar(r.out);
+    return n.ok ? { ...n, dias } : n;
   } catch (e) { return { ok: false, motivo: 'error', detalle: e.message }; }
 }
 

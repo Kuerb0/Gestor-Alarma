@@ -8,7 +8,7 @@ const ICONO = path.join(__dirname, 'assets', 'icon.png');
 const PW = 380; // ancho del panel
 let AJUSTES, ajustes = { fijado: false, iniciarConWindows: true, lugar: null }, win, raya, tray, anim = 0, acento = '#4a9eff';
 nativeTheme.themeSource = HUMO && process.env.PANEL_TEMA === 'light' ? 'light' : 'system'; // el CSS sigue prefers-color-scheme
-let abierto = false, fuera = 0, ultCorreo = 0, leyendoCorreo = false, tSistema = null, bueno = {}, cache = {};
+let diasAgenda = 7, cerradoDesde = 0, extraHumo = [], abierto = false, fuera = 0, ultCorreo = 0, leyendoCorreo = false, tSistema = null, bueno = {}, cache = {};
 
 if (HUMO) app.setPath('userData', fs.mkdtempSync(path.join(require('os').tmpdir(), 'panel-humo-')));
 const LOG = path.join(app.getPath('userData'), 'panel.log');
@@ -36,7 +36,7 @@ async function leerCorreo() { // nunca dos lecturas de Outlook a la vez; si lleg
   if (!Correo) return;
   if (leyendoCorreo) { pendienteCorreo = true; return; }
   leyendoCorreo = true;
-  try { conservar('correo', await Correo.leer()); } catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
+  try { conservar('correo', await Correo.leer({ dias: diasAgenda })); } catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
   finally { leyendoCorreo = false; ultCorreo = Date.now(); if (pendienteCorreo) { pendienteCorreo = false; leerCorreo(); } }
 }
 async function leerMeteo() {
@@ -89,6 +89,7 @@ function poner(v) { // abre/cierra de verdad
   deslizar(v);
   if (raya && !raya.isDestroyed()) v ? raya.hide() : raya.showInactive();
   estado();
+  if (!v) cerradoDesde = Date.now(); else if (diasAgenda > 7 && Date.now() - cerradoDesde > 6e5) { diasAgenda = 7; if (!HUMO) leerCorreo(); } // tras 10 min cerrado, la agenda vuelve a 7 días
   clearInterval(tSistema); tSistema = null;
   if (v) { leerSistema(); tSistema = setInterval(leerSistema, 2000); if (!HUMO && Date.now() - ultCorreo > 15e3) leerCorreo(); }
 }
@@ -197,6 +198,12 @@ function crearBandeja() {
 
 // ---- IPC
 ipcMain.on('abrir-correo', (_, id) => { if (Correo && typeof id === 'string') Promise.resolve(Correo.abrir(id)).catch(e => log('abrir correo ' + e.message)); });
+ipcMain.on('agenda-mas', () => { // +2 semanas de agenda (tope 120 días)
+  if (diasAgenda >= 120) return;
+  diasAgenda = Math.min(120, diasAgenda + 14);
+  if (HUMO) { const c = cache.correo; if (c && c.agenda) { c.dias = diasAgenda; c.agenda.push(...extraHumo.filter(x => x[0] < diasAgenda).map(x => x[1])); extraHumo = extraHumo.filter(x => x[0] >= diasAgenda); enviar('correo', c); } return; }
+  leerCorreo();
+});
 ipcMain.on('marcar-leidos', (_, ids) => {
   if (!Array.isArray(ids) || !ids.every(i => typeof i === 'string' && i)) return;
   if (HUMO) { const c = cache.correo; if (c && c.correos) { c.correos.forEach(x => { if (ids.includes(x.id)) x.leido = true; }); c.noLeidos = c.correos.filter(x => !x.leido).length; enviar('correo', c); } return; }
@@ -247,7 +254,7 @@ async function humo() {
   const h = 36e5, d = 864e5, fallos = [], h0 = new Date().setHours(0, 0, 0, 0);
   const de = ['Ana García', 'Banco Norte', 'Equipo de Proyectos', 'Luis Pérez', 'GitHub', 'Marta Ruiz', 'Newsletter Semanal', 'Carlos Vega'];
   const as = ['Reunión de mañana: confirmar asistencia y orden del día', 'Resumen de tu cuenta', 'Planificación del trimestre', 'Re: presupuesto', 'Nuevo inicio de sesión', 'Cena del viernes', 'Las novedades de la semana', 'Factura 2026-114'];
-  enviar('correo', { ok: true, noLeidos: 3, correos: de.map((x, i) => ({ id: 'c' + i, de: x, asunto: as[i], fecha: iso(ahora - i * 7 * h), leido: i > 2 })),
+  enviar('correo', { ok: true, dias: 7, noLeidos: 3, correos: de.map((x, i) => ({ id: 'c' + i, de: x, asunto: as[i], fecha: iso(ahora - i * 7 * h), leido: i > 2 })),
     categorias: [{ nombre: 'Trabajo', color: '#e5533d' }, { nombre: 'Salud', color: '#3a86ff' }, { nombre: 'Proyectos', color: '#3fa34d' }, { nombre: 'Urgente', color: '#f08c2e' }, { nombre: 'Personal', color: '#a06bff' }],
     agenda: [ // 9 eventos en 7 días: hoy 3 (uno de todo el día), mañana 1, +2 vacío, +3 2, +4 1, +5 vacío, +6 2
       { titulo: 'Cumpleaños de Marta', inicio: iso(h0), fin: iso(h0 + d), todoDia: true, lugar: '' },
@@ -259,6 +266,8 @@ async function humo() {
       { titulo: 'Entrega de informe', inicio: iso(h0 + 4 * d + 16 * h), fin: iso(h0 + 4 * d + 17 * h), todoDia: false, lugar: '', categoria: 'Urgente', color: '#f08c2e' },
       { titulo: 'Visita al médico', inicio: iso(h0 + 6 * d + 11 * h), fin: iso(h0 + 6 * d + 12 * h), todoDia: false, lugar: 'Centro de salud' },
       { titulo: 'Cena de cumpleaños', inicio: iso(h0 + 6 * d + 19 * h), fin: iso(h0 + 6 * d + 21 * h), todoDia: false, lugar: 'Casa de Ana' }] });
+  const ex = (i, hh, t, extra) => [i, { titulo: t, inicio: iso(h0 + i * d + hh * h), fin: iso(h0 + i * d + (hh + 1) * h), todoDia: false, lugar: '', ...extra }]; // eventos inventados más allá de 7 días: salen al «Cargar más»
+  extraHumo = [ex(8, 10, 'Reunión de planificación', { categoria: 'Trabajo', color: '#e5533d' }), ex(10, 18, 'Gimnasio'), ex(15, 9, 'Revisión médica', { categoria: 'Salud', color: '#3a86ff' }), ex(15, 16, 'Entrega de proyecto', { categoria: 'Proyectos', color: '#3fa34d' }), ex(18, 20, 'Cena con amigos', { categoria: 'Personal', color: '#a06bff' }), ex(25, 11, 'Dentista'), ex(30, 12, 'Comida de empresa'), ex(33, 9, 'Vuelo a Lisboa', { categoria: 'Urgente', color: '#f08c2e' })];
   const nd = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes'], ic = ['☀️', '⛅', '🌧️', '☁️', '🌤️'];
   enviar('meteo', { ok: true, lugar: { nombre: 'Madrid', lat: 40.4, lon: -3.7, categoria: 'Personal', color: '#a06bff' }, actual: { temp: 18, codigo: 1, texto: 'Mayormente despejado', icono: '🌤️', viento: 14 },
     horas: Array.from({ length: 24 }, (_, i) => ({ hora: String(i).padStart(2, '0') + ':00', temp: Math.round(13 + 6 * Math.cos((i - 15) / 24 * 2 * Math.PI)), icono: ic[(i / 3 | 0) % 5], lluvia: (i * 7) % 60 })),
@@ -313,6 +322,22 @@ async function humo() {
   if (await js(win, `document.getElementById('ev-form').hidden`) !== true) fallos.push('el formulario no se cerró tras crear');
   if (!/Añadido/.test(await js(win, `document.getElementById('ev-aviso')?.textContent || ''`))) fallos.push('sin aviso «Añadido a Outlook»');
   const nev = await n(win, '.evento'); if (nev !== 10) fallos.push(`.evento tras crear: ${nev} (esperadas 10)`);
+  await js(win, `document.querySelector('.diah[data-i="2"]').click()`);
+  await js(win, `document.getElementById('ev-cancelar').click()`);
+  // «Cargar 2 semanas más»: más eventos y cabecera de 21 días; capturas; y la carga automática al llegar al fondo (35 días)
+  await js(win, `document.querySelector('button[data-tab="agenda"]').click()`); await esp(300);
+  await js(win, `document.getElementById('ag-mas').click()`); await esp(600);
+  const nev2 = await n(win, '.evento'); if (nev2 <= nev) fallos.push(`.evento tras cargar más: ${nev2} (esperadas más de ${nev})`);
+  const cab = await js(win, `document.querySelector('#p-agenda h2').textContent`); if (!/21 días/.test(cab)) fallos.push('cabecera de la Agenda: ' + cab);
+  if (await js(win, `document.querySelectorAll('.semh').length`) < 1) fallos.push('sin separadores de semana/mes');
+  if (await js(win, `document.querySelectorAll('#agenda .diah[data-i="14"], #agenda .pin-ev').length`) < 1) fallos.push('faltan elementos de los días nuevos');
+  nativeTheme.themeSource = 'light'; await esp(300);
+  await js(win, `document.getElementById('p-agenda').scrollTop = 420`); await esp(300);
+  await captura('panel-agenda-mas-claro', win);
+  nativeTheme.themeSource = 'system'; await esp(400); await captura('panel-agenda-mas', win);
+  await js(win, `document.getElementById('p-agenda').scrollTop = 1e5`); await esp(900);
+  const cab2 = await js(win, `document.getElementById('ag-dias').textContent`); if (cab2 !== '35') fallos.push('carga automática al llegar al fondo: ' + cab2 + ' días (esperados 35)');
+  await js(win, `document.getElementById('p-agenda').scrollTop = 0`);
   await js(win, `document.querySelector('.diah[data-i="2"]').click()`);
   if (!/Día:/.test(await js(win, `document.getElementById('ev-vista').textContent`))) fallos.push('clic en el día no abre el formulario con ese día');
   if (await js(win, `document.getElementById('nueva')?.hidden`) !== false) fallos.push('la pastilla de versión nueva no se ve');
