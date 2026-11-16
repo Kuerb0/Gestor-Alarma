@@ -6,10 +6,10 @@ const PS1 = path.join(__dirname, 'outlook.ps1').replace('app.asar' + path.sep, '
 const MOTIVOS = { 3: 'cerrado', 4: 'no_instalado' };
 
 // Ejecuta el .ps1; resuelve { codigo, out, err } sin rechazar nunca
-function ps(args) {
+function ps(args, timeout = 20000) {
   return new Promise(res => {
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', PS1, ...args],
-      { timeout: 20000, windowsHide: true, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
+      { timeout, windowsHide: true, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
       (e, out, err) => res({ codigo: e ? (typeof e.code === 'number' ? e.code : -1) : 0, out: out || '', err: (err || '') + (e && typeof e.code !== 'number' ? e.message : '') }));
   });
 }
@@ -24,7 +24,7 @@ function normalizar(crudo) {
       ok: true,
       noLeidos: Number(j.noLeidos) || 0,
       correos: arr(j.correos).map(c => ({ id: String(c.id || ''), de: String(c.de || ''), asunto: String(c.asunto || ''), fecha: String(c.fecha || ''), leido: !!c.leido })),
-      agenda: arr(j.agenda).map(a => ({ titulo: String(a.titulo || ''), inicio: String(a.inicio || ''), fin: String(a.fin || ''), todoDia: !!a.todoDia, lugar: String(a.lugar || ''), categoria: String(a.categoria || ''), color: /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : null })),
+      agenda: arr(j.agenda).map(a => ({ titulo: String(a.titulo || ''), inicio: String(a.inicio || ''), fin: String(a.fin || ''), todoDia: !!a.todoDia, lugar: String(a.lugar || ''), categoria: String(a.categoria || ''), color: /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : null, id: String(a.id || ''), recurrente: !!a.recurrente })),
       categorias: arr(j.categorias).filter(c => c && c.nombre).map(c => ({ nombre: String(c.nombre), color: /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : null })),
     };
   } catch (e) { return { ok: false, motivo: 'error', detalle: e.message }; }
@@ -92,4 +92,38 @@ async function crearEvento(ev, { ensayo = false } = {}) {
   finally { try { fs.unlinkSync(f); } catch {} }
 }
 
-module.exports = { leer, abrir, marcarLeidos, normalizar, crearEvento, validarEvento };
+// Cuenta los correos sin leer de todas las carpetas de correo: { ok, total }
+async function contarBuzon() {
+  try {
+    const r = await ps(['-Buzon']);
+    if (r.codigo !== 0) return { ok: false, motivo: MOTIVOS[r.codigo] || 'error' };
+    const j = JSON.parse(r.out.replace(/^﻿/, ''));
+    return { ok: j.ok === true, total: Number(j.noLeidos) || 0 };
+  } catch { return { ok: false, motivo: 'error' }; }
+}
+
+// Marca como leídos todos los correos sin leer de todas las carpetas (puede tardar): { ok, hechos, fallos }
+async function marcarBuzon() {
+  const mal = { ok: false, hechos: 0, fallos: 0 };
+  try {
+    const r = await ps(['-MarcarBuzon'], 10 * 60 * 1000);
+    if (r.codigo !== 0) return mal;
+    const j = JSON.parse(r.out.replace(/^﻿/, ''));
+    return { ok: j.ok === true, hechos: Number(j.hechos) || 0, fallos: Number(j.fallos) || 0 };
+  } catch { return mal; }
+}
+
+// Borra un evento de la agenda. ev = { id, inicio, recurrente, serie }: si es recurrente y no `serie`, solo esa ocurrencia.
+async function borrarEvento(ev) {
+  if (!ev || typeof ev.id !== 'string' || !ev.id || typeof ev.inicio !== 'string' || !ISO.test(ev.inicio)) return { ok: false, motivo: 'evento no válido' };
+  const f = path.join(os.tmpdir(), `panel-borrar-${process.pid}-${Date.now()}.json`);
+  try {
+    fs.writeFileSync(f, JSON.stringify({ id: ev.id, inicio: ev.inicio, recurrente: !!ev.recurrente, serie: !!ev.serie }));
+    const r = await ps(['-BorrarEvento', f]);
+    if (r.codigo !== 0) return { ok: false, motivo: 'No se pudo borrar el evento' + (r.err.trim() ? ': ' + r.err.trim().slice(0, 150) : '') };
+    return { ok: true };
+  } catch { return { ok: false, motivo: 'No se pudo borrar el evento' }; }
+  finally { try { fs.unlinkSync(f); } catch {} }
+}
+
+module.exports = { leer, abrir, marcarLeidos, normalizar, crearEvento, validarEvento, contarBuzon, marcarBuzon, borrarEvento };

@@ -31,6 +31,17 @@ const enviar = (canal, dato) => { cache[canal] = dato; win && !win.isDestroyed()
 const eventosOverlay = () => ((cache.correo && cache.correo.agenda) || []).map(e => ({ titulo: e.titulo, inicio: e.inicio, fin: e.fin, todoDia: e.todoDia, color: e.color })); // también los de todo el día: dan color a las alarmas del mismo nombre
 function agendaAlOverlay() { const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) ov.webContents.send('agenda', eventosOverlay()); }
 ipcMain.handle('agenda:lista', eventosOverlay);
+
+// ---- no molestar: silencia los pitidos del overlay (las tarjetas siguen viéndose). Solo en memoria: al reiniciar se quita.
+let silencioHasta = 0;
+const silenciando = () => Date.now() < silencioHasta;
+const horaSilencio = () => new Date(silencioHasta).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+function silenciar(minutos) {
+  silencioHasta = minutos ? Date.now() + minutos * 6e4 : 0;
+  const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) ov.webContents.send('silencio', silencioHasta);
+  tray && tray.setContextMenu(menu());
+}
+ipcMain.handle('silencio:hasta', () => silencioHasta);
 const estado = () => enviar('estado', { abierto, fijado: ajustes.fijado });
 
 // ---- lecturas (si falla, se conserva el último dato bueno y se marca `obsoleto`)
@@ -190,6 +201,12 @@ const menu = () => Menu.buildFromTemplate([
   { type: 'separator' },
   ...Alarmas.menuItems(),
   { type: 'separator' },
+  { label: silenciando() ? `No molestar · hasta las ${horaSilencio()}` : 'No molestar', submenu: [
+    { label: '30 minutos', click: () => silenciar(30) },
+    { label: '1 hora', click: () => silenciar(60) },
+    { label: '2 horas', click: () => silenciar(120) },
+    ...(silenciando() ? [{ type: 'separator' }, { label: 'Quitar', click: () => silenciar(0) }] : []),
+  ] },
   { label: 'Iniciar con Windows', type: 'checkbox', checked: !!ajustes.iniciarConWindows, click: i => { ajustes.iniciarConWindows = i.checked; guardarAjustes(); aplicarInicio(); } },
   { label: 'Salir', click: () => app.quit() },
 ]);
@@ -225,6 +242,38 @@ ipcMain.handle('crear-evento', async (_, ev) => {
   if (!Correo) return { ok: false, motivo: 'Outlook no disponible' };
   try { const r = await Correo.crearEvento(ev); if (r.ok) leerCorreo(); return r; } catch (e) { log('crear evento ' + e.message); return { ok: false, motivo: 'No se pudo crear el evento' }; }
 });
+ipcMain.handle('buzon:contar', async () => {
+  if (HUMO) return { ok: true, total: (cache.correo && cache.correo.noLeidos) || 0 };
+  return Correo ? Correo.contarBuzon() : { ok: false, motivo: 'error' };
+});
+ipcMain.handle('buzon:marcar', async () => {
+  if (HUMO) { const c = cache.correo; if (c && c.correos) { c.correos.forEach(x => { x.leido = true; }); c.noLeidos = 0; enviar('correo', c); } return { ok: true, hechos: 0, fallos: 0 }; }
+  if (!Correo) return { ok: false, hechos: 0, fallos: 0 };
+  const r = await Correo.marcarBuzon(); if (!r.ok) log('marcar buzón falló'); leerCorreo(); return r;
+});
+ipcMain.handle('agenda:borrar', async (_, ev) => {
+  if (!ev || typeof ev.id !== 'string' || !ev.id) return { ok: false, motivo: 'evento no válido' };
+  if (HUMO) { const c = cache.correo; if (c && c.agenda) { c.agenda = c.agenda.filter(x => !(x.id === ev.id && (ev.serie || x.inicio === ev.inicio))); enviar('correo', c); } return { ok: true }; }
+  if (!Correo) return { ok: false, motivo: 'Outlook no disponible' };
+  const r = await Correo.borrarEvento(ev); leerCorreo(); return r; // relee siempre: si falló, la agenda vuelve a lo que hay en Outlook
+});
+
+// ---- notas rápidas: una lista en %APPDATA%\panel\notas.json; cada cambio manda la lista entera
+const NOTAS = () => path.join(app.getPath('userData'), 'notas.json');
+function leerNotas() {
+  try { const j = JSON.parse(fs.readFileSync(NOTAS(), 'utf8')); return Array.isArray(j) ? j.filter(n => n && typeof n.id === 'string' && typeof n.texto === 'string') : []; }
+  catch { return []; }
+}
+function guardarNotas(lista) {
+  if (!Array.isArray(lista) || lista.length > 500) return { ok: false, motivo: 'lista no válida' };
+  const limpias = lista.map(n => ({ id: String(n && n.id || '').slice(0, 64), texto: String(n && n.texto || '').slice(0, 5000), creada: String(n && n.creada || '').slice(0, 40) }));
+  if (limpias.some(n => !n.id)) return { ok: false, motivo: 'nota no válida' };
+  try { fs.writeFileSync(NOTAS() + '.tmp', JSON.stringify(limpias)); fs.renameSync(NOTAS() + '.tmp', NOTAS()); return { ok: true }; }
+  catch (e) { log('notas ' + e.message); return { ok: false, motivo: 'error' }; }
+}
+ipcMain.handle('notas:leer', leerNotas);
+ipcMain.handle('notas:guardar', (_, lista) => guardarNotas(lista));
+
 ipcMain.on('abrir-outlook', () => { try { spawn('cmd', ['/c', 'start', '', 'outlook'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref(); } catch (e) { log('outlook ' + e.message); } });
 ipcMain.on('fijar', (_, b) => fijar(b === true));
 ipcMain.on('actualizar', actualizar);
@@ -272,12 +321,18 @@ async function humo() {
       { titulo: 'Cena de cumpleaños', inicio: iso(h0 + 6 * d + 19 * h), fin: iso(h0 + 6 * d + 21 * h), todoDia: false, lugar: 'Casa de Ana' }] });
   const ex = (i, hh, t, extra) => [i, { titulo: t, inicio: iso(h0 + i * d + hh * h), fin: iso(h0 + i * d + (hh + 1) * h), todoDia: false, lugar: '', ...extra }]; // eventos inventados más allá de 7 días: salen al «Cargar más»
   extraHumo = [ex(8, 10, 'Reunión de planificación', { categoria: 'Trabajo', color: '#e5533d' }), ex(10, 18, 'Gimnasio'), ex(15, 9, 'Revisión médica', { categoria: 'Salud', color: '#3a86ff' }), ex(15, 16, 'Entrega de proyecto', { categoria: 'Proyectos', color: '#3fa34d' }), ex(18, 20, 'Cena con amigos', { categoria: 'Personal', color: '#a06bff' }), ex(25, 11, 'Dentista'), ex(30, 12, 'Comida de empresa'), ex(33, 9, 'Vuelo a Lisboa', { categoria: 'Urgente', color: '#f08c2e' })];
+  cache.correo.agenda.forEach((e, i) => { e.id = 'h' + i; }); // ids inventados: así la agenda enseña el botón de borrar
   const nd = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes'], ic = ['☀️', '⛅', '🌧️', '☁️', '🌤️'];
-  enviar('meteo', { ok: true, lugar: { nombre: 'Madrid', lat: 40.4, lon: -3.7, categoria: 'Personal', color: '#a06bff' }, actual: { temp: 18, codigo: 1, texto: 'Mayormente despejado', icono: '🌤️', viento: 14 },
-    horas: Array.from({ length: 24 }, (_, i) => ({ hora: String(i).padStart(2, '0') + ':00', temp: Math.round(13 + 6 * Math.cos((i - 15) / 24 * 2 * Math.PI)), icono: ic[(i / 3 | 0) % 5], lluvia: (i * 7) % 60 })),
+  // horas con los mismos campos que meteo.js (viento, humedad, sensación, presión, nubes, UV) y puntos cada 15 min
+  const hora = (k, t, i) => ({ hora: String(k).padStart(2, '0') + ':00', temp: t, icono: ic[(k / 3 | 0) % 5], lluvia: (k * 5 + i * 9) % 50, viento: 8 + (k * 3) % 14, humedad: 40 + (k * 4) % 50, sens: t - 1, presion: 1012 + i, nubes: (k * 9) % 100, uv: Math.max(0, Math.round(6 * Math.sin((k - 6) / 12 * Math.PI))) });
+  const puntos = (i, horas) => Array.from({ length: 96 }, (_, q) => { const k = Math.floor(q / 4), hd = q / 4, f = horas[k] || horas[0]; return { hora: String(k).padStart(2, '0') + ':' + String(q % 4 * 15).padStart(2, '0'), hd, temp: Math.round(f.temp + (q % 4) * .25), lluvia: (q * 3 + i * 7) % 60, icono: q % 4 ? '' : f.icono }; });
+  const hHoy = Array.from({ length: 24 }, (_, k) => hora(k, Math.round(13 + 6 * Math.cos((k - 15) / 24 * 2 * Math.PI)), 0));
+  const dHoras = nd.map((n, i) => Array.from({ length: 24 }, (_, k) => hora(k, Math.round(13 + i * 1.5 + 6 * Math.cos((k - 15) / 24 * 2 * Math.PI)), i)));
+  enviar('meteo', { ok: true, lugar: { nombre: 'Madrid', lat: 40.4, lon: -3.7, categoria: 'Personal', color: '#a06bff' }, actual: { temp: 18, codigo: 1, texto: 'Mayormente despejado', icono: '🌤️', viento: 14, humedad: 58, sens: 17, presion: 1016, nubes: 30 },
+    horas: hHoy, puntos: puntos(0, hHoy),
     ahora: new Date().getHours() + new Date().getMinutes() / 60,
     dias: nd.map((n, i) => ({ fecha: iso(ahora + i * d).slice(0, 10), nombre: n, max: 20 + i, min: 9 + i, icono: ic[i], texto: 'Soleado', lluvia: i * 15,
-      horas: Array.from({ length: 24 }, (_, k) => ({ hora: String(k).padStart(2, '0') + ':00', temp: Math.round(13 + i * 1.5 + 6 * Math.cos((k - 15) / 24 * 2 * Math.PI)), icono: ic[(k / 3 | 0) % 5], lluvia: (k * 5 + i * 9) % 50 })) })) });
+      horas: dHoras[i], puntos: puntos(i, dHoras[i]) })) });
   Alarmas.datosHumo();
   enviar('sistema', { cpu: 23, ramUsada: 9.5e9, ramTotal: 16e9, discoLibre: 180e9, discoTotal: 500e9 });
   nueva = { version: '9.9.9' }; pintarAct(); // pastilla de «versión nueva» inventada
@@ -286,7 +341,7 @@ async function humo() {
   const salida = path.join(require('os').tmpdir(), 'panel-humo'); fs.mkdirSync(salida, { recursive: true });
   const js = (w, c) => w.webContents.executeJavaScript(c), esp = ms => new Promise(r => setTimeout(r, ms));
   const captura = async (n, w) => { try { fs.writeFileSync(path.join(salida, n + '.png'), (await w.webContents.capturePage()).toPNG()); } catch (e) { fallos.push('captura ' + n + ': ' + e.message); } };
-  for (const tema of ['', '-claro']) for (const t of ['alarmas', 'correo', 'agenda', 'tiempo', 'sistema']) {
+  for (const tema of ['', '-claro']) for (const t of ['alarmas', 'correo', 'agenda', 'tiempo', 'notas', 'sistema']) {
     if (tema && t === 'alarmas') { nativeTheme.themeSource = 'light'; await esp(400); }
     if (!await js(win, `(b => b ? (b.click(), true) : false)(document.querySelector('button[data-tab="${t}"]'))`)) { fallos.push('falta el botón de la pestaña ' + t); continue; }
     if (t === 'alarmas' && !tema) { // el botón de sincronizar responde (en humo, sin leer nada real)
@@ -361,6 +416,22 @@ async function humo() {
   if (await n(win, '.fr-hoy') !== 0 || await n(win, '.fr-ya') !== 1) fallos.push('volver a hoy: gráfico incorrecto');
   const tarjetas = await n(Alarmas.overlay(), '.tarjeta');
   if (tarjetas !== 5) fallos.push('tarjetas visibles: ' + tarjetas + ' (esperadas 5)');
+  // nuevo: borrar un evento de la agenda (con confirmación), marcar todo el buzón y la página de notas
+  await js(win, `document.querySelector('button[data-tab="agenda"]').click()`); await esp(300);
+  const evAntes = await n(win, '.evento');
+  await js(win, `document.querySelector('#agenda .borrar-ev').click()`); await esp(200);
+  if (!await n(win, '.ev-conf')) fallos.push('borrar evento: no aparece la confirmación');
+  await js(win, `document.querySelector('.ev-conf [data-act="una"]').click()`); await esp(600);
+  if (await n(win, '.evento') !== evAntes - 1) fallos.push('borrar evento: no desaparece de la agenda');
+  await js(win, `document.querySelector('button[data-tab="correo"]').click()`); await esp(300);
+  await js(win, `document.getElementById('c-buzon').click()`); await esp(300);
+  if (!/3 correos/.test(await js(win, `document.getElementById('c-conf-t').textContent`))) fallos.push('buzón: no pregunta cuántos correos');
+  await js(win, `document.getElementById('c-conf-ok').click()`); await esp(500);
+  if (await n(win, '.fila-correo.nl') !== 0) fallos.push('buzón: quedan correos sin leer');
+  await js(win, `document.querySelector('button[data-tab="notas"]').click()`); await esp(300);
+  await js(win, `(t => { t.value = 'Nota de prueba'; t.dispatchEvent(new Event('input')); document.getElementById('nt-form').requestSubmit(); })(document.getElementById('nt-texto'))`); await esp(300);
+  if (await n(win, '.nota') !== 1) fallos.push('notas: no se añade la nota');
+  await captura('panel-notas-nueva', win);
   console.log(fallos.length ? 'HUMO FALLA\n' + fallos.join('\n') : 'HUMO OK · capturas en ' + salida);
   app.exit(fallos.length ? 1 : 0);
 }

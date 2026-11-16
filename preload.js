@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('api', {
   agendaMas: () => ipcRenderer.send('agenda-mas'),
   crearEvento: ev => ipcRenderer.invoke('crear-evento', ev),
   abrirOutlook: () => ipcRenderer.send('abrir-outlook'),
+  buzonContar: () => ipcRenderer.invoke('buzon:contar'),
+  buzonMarcar: () => ipcRenderer.invoke('buzon:marcar'),
+  borrarEvento: ev => ipcRenderer.invoke('agenda:borrar', ev),
+  notasLeer: () => ipcRenderer.invoke('notas:leer'),
+  notasGuardar: lista => ipcRenderer.invoke('notas:guardar', lista),
   fijar: b => ipcRenderer.send('fijar', !!b),
   actualizar: () => ipcRenderer.send('actualizar'),
   cerrar: () => ipcRenderer.send('cerrar'),
@@ -29,4 +34,6 @@ contextBridge.exposeInMainWorld('alarmas', {
   alCambiar: cb => ipcRenderer.on('alarmas', (_, l) => cb(l)),
   agenda: () => ipcRenderer.invoke('agenda:lista'), // eventos de la agenda (los que están pasando salen como cuadrados en el overlay)
   alAgenda: cb => ipcRenderer.on('agenda', (_, l) => cb(l)),
+  silencioHasta: () => ipcRenderer.invoke('silencio:hasta'), // no molestar: hasta cuándo (ms desde 1970; 0 = no)
+  alSilencio: cb => ipcRenderer.on('silencio', (_, h) => cb(h)),
 });

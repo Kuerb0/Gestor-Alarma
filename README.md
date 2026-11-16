@@ -6,15 +6,15 @@ Gestor-Alarma: panel lateral para Windows (Electron), fijo al **borde derecho** 
 - Ratón al borde derecho de la pantalla (en cualquier altura).
 - `Ctrl+Alt+P`: abre fijado / cierra. `Esc`: cierra. 📌 de la cabecera: fija abierto (se recuerda).
 - `Ctrl+Alt+A`: abre fijado en la pestaña **Alarmas** con el campo rápido enfocado (si ya está en Alarmas, cierra). `Ctrl+Alt+D`: descarta lo que suena.
-- Bandeja: clic abre/cierra; menú con Abrir panel, Fijar abierto, Actualizar ahora, las entradas de alarmas (nueva, descartar, sincronizar, formato del tiempo), Iniciar con Windows y Salir.
+- Bandeja: clic abre/cierra; menú con Abrir panel, Fijar abierto, Actualizar ahora, las entradas de alarmas (nueva, descartar, sincronizar, formato del tiempo), **No molestar** (30 min, 1 h o 2 h; silencia los pitidos del overlay, las tarjetas siguen; se quita solo o desde el menú; no sobrevive a reiniciar), Iniciar con Windows y Salir.
 - Inicio con Windows: acceso directo `Panel.lnk` en la carpeta Inicio (Windows omite la entrada de Run en este equipo; la antigua se borra al arrancar). `PANEL_SIN_INICIO=1` evita tocar el inicio.
 
-**Pestañas:** Alarmas, Correo, Agenda, Tiempo y Sistema (`Ctrl+Alt+A` salta a Alarmas).
+**Pestañas:** Alarmas, Correo, Agenda, Tiempo, Notas y Sistema (`Ctrl+Alt+A` salta a Alarmas).
 
 **De dónde sale cada dato**
 - Hora y fecha: el reloj del PC.
-- Tiempo: `meteo.js` (cada 30 min; el lugar se guarda en `ajustes.json`).
-- Correo y agenda (hoy y mañana): `correo.js` + `outlook.ps1` con Outlook clásico abierto; cada 60 s y al abrir el panel. Clic en un correo lo abre; si Outlook está cerrado hay botón para abrirlo.
+- Tiempo: `meteo.js` (cada 30 min; el lugar se guarda en `ajustes.json`). El gráfico del día muestra un punto cada 15 min cuando Open-Meteo lo da, y debajo viento, humedad, sensación, UV, presión y nubes.
+- Correo y agenda (hoy y mañana): `correo.js` + `outlook.ps1` con Outlook clásico abierto; cada 60 s y al abrir el panel. Clic en un correo lo abre; si Outlook está cerrado hay botón para abrirlo. «Marcar todo el buzón como leído» cuenta los no leídos de todas las carpetas y pide confirmación con ese número.
 - Alarmas: el motor `alarmas.js` (el antiguo Gestor-Alarmas, ya integrado); ver «Pestaña Alarmas».
 - Sistema: `sistema.js` (CPU, RAM, disco C:) cada 2 s solo con el panel abierto; batería con `navigator.getBattery()`.
 
@@ -52,9 +52,12 @@ La lista de la pestaña permite **Editar** y **Borrar**.
 
 **Datos:** `%APPDATA%\gestor-alarmas` (la carpeta del Gestor, para no perder nada): `alarmas.json` (con `.bak`), `ajustes.json` (solo se leen `formato`, `ventanaDias` y `calendarioOutlook`), `categorias.json` y `outlook-pendiente.json`.
 
+**Notas rápidas** (pestaña Notas): lista de notas de texto, con Editar y Borrar (Borrar pide una segunda pulsación). Se guardan en `%APPDATA%panel
+otas.json`.
+
 ## Desarrollo
 - `npm install`, `npm start`.
-- `npm test`: fuentes, `tiempo.js`, `puente.js` y `outlook_salida.js`. `npm run humo`: abre el panel y el overlay con datos inventados, recorre las pestañas, guarda capturas en `%TEMP%\panel-humo` (`panel-<pestaña>.png`, `overlay.png`) y comprueba el DOM (`HUMO OK`).
+- `npm test`: fuentes, `tiempo.js`, `puente.js`, `outlook_salida.js`, `actualizar.js` y `meteo.js`. `npm run humo`: abre el panel y el overlay con datos inventados, recorre las pestañas, guarda capturas en `%TEMP%\panel-humo` (`panel-<pestaña>.png`, `overlay.png`) y comprueba el DOM (`HUMO OK`). No emite sonido.
 - Empaquetado: `python C:\Github\herramientas-apps\construir.py exe` (usa `app.json`).
 
 ## Actualizaciones y publicar una versión

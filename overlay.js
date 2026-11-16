@@ -1,5 +1,11 @@
 const MAX = 5, NOMBRE_MAX = 11, lista = document.getElementById('lista'), mas = document.getElementById('mas'), els = new Map();
 let datos = [], ultimoPitido = 0, ctx, formato = 'adaptativo';
+const SIN_SONIDO = new URLSearchParams(location.search).has('humo'); // la prueba de humo (npm run humo) no pita nunca
+let silencioHasta = 0; // «No molestar» de la bandeja: hasta esa hora (ms) no pita; las tarjetas siguen viéndose
+if (window.alarmas) {
+  alarmas.silencioHasta().then(h => { silencioHasta = h || 0; });
+  alarmas.alSilencio(h => { silencioHasta = h || 0; });
+}
 
 function pitido() { // dos tonos; Web Audio, sin ficheros
   try {
@@ -64,7 +70,7 @@ function pintar() {
   mas.style.display = resto ? 'block' : 'none'; mas.textContent = '+' + resto + ' más';
   todos.push(...pintarAgenda(ahora));
   todos.sort((x, y) => x.p - y.p || x.v - y.v).forEach((x, n) => { if (lista.children[n] !== x.e) lista.insertBefore(x.e, lista.children[n] || null); });
-  if (suena && ahora - ultimoPitido >= 1000) { ultimoPitido = ahora; pitido(); }
+  if (suena && !SIN_SONIDO && ahora >= silencioHasta && ahora - ultimoPitido >= 1000) { ultimoPitido = ahora; pitido(); }
 }
 // Color de una alarma sin color propio (las de Outlook y las creadas aquí): el del evento de la agenda con su nombre y hora; si no, el de otro evento del mismo nombre ese día
 const COL = /^#[0-9a-f]{6}$/i;

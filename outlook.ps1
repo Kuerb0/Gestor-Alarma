@@ -5,8 +5,11 @@
 #      outlook.ps1 -Crear F [-Ensayo] -> crea el evento del JSON F {titulo,inicio,fin,todoDia,lugar,categoria} en el calendario predeterminado; salida {ok,id}.
 #                                        Con -Ensayo monta el evento pero lo descarta sin guardar: {ok,ensayo}
 #      outlook.ps1 -Leidos F  -> marca como leídos los EntryIDs del array JSON del fichero F; salida {ok,hechos,fallos}
+#      outlook.ps1 -Buzon     -> cuenta los correos sin leer de todas las carpetas de correo; salida {ok,noLeidos}
+#      outlook.ps1 -MarcarBuzon -> marca como leídos todos los correos sin leer de todas las carpetas; salida {ok,hechos,fallos}
+#      outlook.ps1 -BorrarEvento F -> borra el evento del JSON F {id,inicio,recurrente,serie}: la serie entera (serie) o solo la ocurrencia de «inicio»
 # Códigos de salida: 0 = ok · 3 = Outlook cerrado (no se abre solo) · 4 = Outlook no instalado · 5 = otro error
-param([string]$Abrir, [string]$Leidos, [string]$Crear, [switch]$Ensayo, [int]$Dias = 7)
+param([string]$Abrir, [string]$Leidos, [string]$Crear, [switch]$Ensayo, [int]$Dias = 7, [switch]$Buzon, [switch]$MarcarBuzon, [string]$BorrarEvento)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 
@@ -32,6 +35,43 @@ try {
       try { $x = $ns.GetItemFromID([string]$id); $x.UnRead = $false; $x.Save(); $hechos++ } catch { $fallos++ }
     }
     [ordered]@{ ok = $true; hechos = $hechos; fallos = $fallos } | ConvertTo-Json -Compress
+    exit 0
+  }
+
+  if ($Buzon -or $MarcarBuzon) {
+    # Carpetas de correo de todos los almacenes (recursivo). Restrict() filtra solo los no leídos.
+    $carpetas = New-Object Collections.Generic.List[object]
+    function Recoger($f) {
+      if ($f.DefaultItemType -eq 0) { $carpetas.Add($f) }
+      foreach ($s in $f.Folders) { Recoger $s }
+    }
+    foreach ($st in $ns.Stores) { try { Recoger $st.GetRootFolder() } catch { } }
+    if ($MarcarBuzon) {
+      $hechos = 0; $fallos = 0
+      foreach ($f in $carpetas) {
+        try {
+          $sin = $f.Items.Restrict('[UnRead] = true'); $it = $sin.GetFirst()
+          while ($it -ne $null) { try { $it.UnRead = $false; $it.Save(); $hechos++ } catch { $fallos++ }; $it = $sin.GetNext() }
+        } catch { }
+      }
+      [ordered]@{ ok = $true; hechos = $hechos; fallos = $fallos } | ConvertTo-Json -Compress
+    } else {
+      $total = 0
+      foreach ($f in $carpetas) { try { $total += [int]$f.UnReadItemCount } catch { } }
+      [ordered]@{ ok = $true; noLeidos = $total } | ConvertTo-Json -Compress
+    }
+    exit 0
+  }
+
+  if ($BorrarEvento) {
+    $j = Get-Content -LiteralPath $BorrarEvento -Raw -Encoding UTF8 | ConvertFrom-Json
+    $ci = [Globalization.CultureInfo]::InvariantCulture
+    $m = $ns.GetItemFromID([string]$j.id)   # en una serie, el id es el de la serie (maestro)
+    if ($j.recurrente -and -not $j.serie) {
+      $occ = $m.GetRecurrencePattern().GetOccurrence([datetime]::ParseExact([string]$j.inicio, 'yyyy-MM-ddTHH:mm:ss', $ci))
+      $occ.Delete()
+    } else { $m.Delete() }
+    [ordered]@{ ok = $true } | ConvertTo-Json -Compress
     exit 0
   }
 
@@ -82,7 +122,11 @@ try {
       $cats = @(([string]$a.Categories -split '[;,]') | ForEach-Object { $_.Trim() } | Where-Object { $_ }); $color = $null
       $cat = [string]($cats | Where-Object { $_ -ne 'Alarma' } | Select-Object -First 1); if (-not $cat -and $cats) { $cat = [string]$cats[0] }   # «Alarma» es la etiqueta funcional del Gestor: la que se enseña (y colorea) es la otra
       if ($cat -and $col[$cat]) { $color = $col[$cat] }
-      $agenda.Add([ordered]@{ titulo = [string]$a.Subject; inicio = $ini.ToString('s'); fin = $a.End.ToString('s'); todoDia = [bool]$a.AllDayEvent; lugar = [string]$a.Location; categoria = $cat; color = $color })
+      # id: el del evento; en una serie (ocurrencia o excepción) el de la serie, y «inicio» dice cuál ocurrencia
+      $rs = [int]$a.RecurrenceState
+      $evId = ''
+      try { $evId = if ($rs -eq 0) { [string]$a.EntryID } else { [string]$a.GetRecurrencePattern().Parent.EntryID } } catch { }
+      $agenda.Add([ordered]@{ titulo = [string]$a.Subject; inicio = $ini.ToString('s'); fin = $a.End.ToString('s'); todoDia = [bool]$a.AllDayEvent; lugar = [string]$a.Location; categoria = $cat; color = $color; id = $evId; recurrente = ($rs -ne 0) })
     }
   }
   [ordered]@{ ok = $true; noLeidos = [int]$bandeja.UnReadItemCount; correos = $correos.ToArray(); agenda = $agenda.ToArray(); categorias = $categorias.ToArray() } | ConvertTo-Json -Depth 5 -Compress  # ToArray: @(List) falla en PS 5.1 («Los tipos de argumentos no coinciden»)
