@@ -10,7 +10,7 @@ $tag = "v$v"
 if (-not $Notas) { $Notas = "Gestor-Alarma $v" }
 $inst = Join-Path $raiz "dist\GestorAlarma $v - Instalador.exe"   # construir.py: dist/<nombre de app.json> <versión> - Instalador.exe
 
-function Paso($t, [scriptblock]$f) { if ($Ensayo) { Write-Host "[ensayo] $t" } else { Write-Host $t; & $f; if ($LASTEXITCODE) { throw "falló: $t" } } }
+function Paso($t, [scriptblock]$f) { if ($Ensayo) { Write-Host "[ensayo] $t" } else { Write-Host $t; $ErrorActionPreference = 'Continue'; & $f 2>&1 | ForEach-Object { "$_" }; if ($LASTEXITCODE) { throw "falló: $t" } } }
 
 if (git status --porcelain) { if ($Ensayo) { Write-Host '[ensayo] AVISO: el árbol git no está limpio (la publicación real se negaría)' } else { throw 'El árbol git no está limpio: haz commit antes de publicar.' } }
 if (git tag -l $tag) { throw "La etiqueta $tag ya existe: sube la versión en package.json." }
