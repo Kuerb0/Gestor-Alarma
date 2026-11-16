@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
+<title>Gestor de alarmas</title>
+<style>
+:root{--fa:#283040;--fb:#1b212c;--borde:#262c39;--ambar:#ffb000;--rojo:#ff5a4d;--font:"Cascadia Mono",Consolas,monospace}
+html,body{margin:0;background:transparent;overflow:hidden;font-family:var(--font)}
+#lista{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.tarjeta{--tn:#aab4c4;--th:#ffc94d;width:fit-content;padding:1px 2px 2px}
+.nom,.hora{display:flex;align-items:flex-start;white-space:nowrap}
+.nom{--w:9px;--h:13px;font-size:10px;--tx:var(--tn);margin-bottom:1px}
+.hora{--w:15px;--h:24px;font-size:19px;--tx:var(--th)}
+.sep{display:inline-block;width:6px;height:var(--h);line-height:var(--h);text-align:center;color:var(--tx);font-weight:700}
+.sep.esp{width:3px}
+
+/* ficha split-flap: arriba/abajo fijas (sup, inf) y dos hojas que giran (ab: la vieja cae, ba: la nueva sube) */
+.ficha{position:relative;display:inline-block;width:var(--w);height:var(--h);margin:0 .5px;perspective:140px;color:var(--tx);font-weight:700;text-align:center}
+.ficha i{position:absolute;left:0;right:0;height:50%;overflow:hidden;font-style:normal;backface-visibility:hidden}
+.ficha b{position:absolute;left:0;right:0;height:var(--h);line-height:var(--h);font-weight:700}
+.sup,.ab{top:0;transform-origin:50% 100%;background:var(--fa);border-radius:2px 2px 0 0}.sup b,.ab b{top:0}
+.inf,.ba{bottom:0;transform-origin:50% 0;background:var(--fb);border-radius:0 0 2px 2px}.inf b,.ba b{bottom:0}
+.ba{transform:rotateX(90deg)}
+.ficha::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;margin-top:-.5px;background:rgba(0,0,0,.55);z-index:5}
+.gira .ab{animation:cae .11s ease-in var(--d,0ms) forwards}
+.gira .ba{animation:sube .11s ease-out calc(var(--d,0ms) + .11s) forwards}
+@keyframes cae{to{transform:rotateX(-90deg)}}
+@keyframes sube{to{transform:rotateX(0)}}
+
+.sonando{animation:parp 1s steps(1) infinite}
+@keyframes parp{0%{--fa:#ffb000;--fb:#e29d00;--tn:#1a1000;--th:#1a1000}50%{}}
+.perdida{--tn:var(--rojo);--th:var(--rojo)}
+@media (prefers-reduced-motion:reduce){.sonando{animation:none;--fa:#ffb000;--fb:#e29d00;--tn:#1a1000;--th:#1a1000}.gira .ab,.gira .ba{animation-duration:1ms}}
+#mas{display:none;margin-top:4px;float:right;color:#9aa5b8;font-size:10px;padding:0 4px;text-shadow:0 0 3px #000,0 0 6px #000}
+</style></head>
+<body><div id="lista"></div><div id="mas"></div>
+<script src="tiempo.js"></script>
+<script src="overlay.js"></script></body></html>

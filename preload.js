@@ -1,0 +1,25 @@
+const { contextBridge, ipcRenderer } = require('electron');
+const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana'];
+contextBridge.exposeInMainWorld('api', {
+  on: (canal, fn) => { if (CANALES.includes(canal)) ipcRenderer.on(canal, (_, d) => fn(d)); },
+  abrirCorreo: id => ipcRenderer.send('abrir-correo', id),
+  abrirOutlook: () => ipcRenderer.send('abrir-outlook'),
+  fijar: b => ipcRenderer.send('fijar', !!b),
+  actualizar: () => ipcRenderer.send('actualizar'),
+  cerrar: () => ipcRenderer.send('cerrar'),
+});
+// API del motor de alarmas (la usan la pestaña Alarmas y el overlay)
+contextBridge.exposeInMainWorld('alarmas', {
+  lista: () => ipcRenderer.invoke('alarmas:lista'),
+  crear: r => ipcRenderer.invoke('alarmas:crear', r),
+  editar: (id, r) => ipcRenderer.invoke('alarmas:editar', id, r),
+  borrar: id => ipcRenderer.invoke('alarmas:borrar', id),
+  cerrar: () => ipcRenderer.send('cerrar'), // cierra el panel
+  formato: () => ipcRenderer.invoke('ajustes:formato'),
+  alFormato: cb => ipcRenderer.on('formato', (_, f) => cb(f)),
+  syncEstado: () => ipcRenderer.invoke('sync:estado'),
+  syncAhora: () => ipcRenderer.invoke('sync:ahora'),
+  syncVentana: d => ipcRenderer.invoke('sync:ventana', d),
+  alSync: cb => ipcRenderer.on('sync', (_, s) => cb(s)),
+  alCambiar: cb => ipcRenderer.on('alarmas', (_, l) => cb(l)),
+});

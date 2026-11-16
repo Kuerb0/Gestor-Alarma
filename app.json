@@ -1,0 +1,15 @@
+{
+  "nombre": "Panel",
+  "nombre_visible": "Panel",
+  "version_fichero": "package.json",
+  "version_regex": "\"version\"\\s*:\\s*\"([^\"]+)\"",
+  "icono": "assets/icon.ico",
+  "icono_png": "assets/icon.png",
+  "exe": {
+    "modo": "electron",
+    "electron": "45.3.1",
+    "archivos": ["package.json", "main.js", "preload.js", "correo.js", "outlook.ps1", "meteo.js", "alarmas.js", "tiempo.js", "puente.js", "outlook_salida.js", "outlook_escribir.ps1", "overlay.html", "overlay.js", "sistema.js", "panel.html", "panel.css", "panel.js", "pestana_alarmas.js", "assets"],
+    "datos_usuario": []
+  },
+  "prueba": { "segundos": 8, "argumentos": ["--user-data-dir={tmp}/datos"] }
+}

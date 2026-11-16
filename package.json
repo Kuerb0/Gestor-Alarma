@@ -1,0 +1,1 @@
+{"name":"panel","version":"1.0.0","main":"main.js","scripts":{"start":"electron .","test":"node tests/test_fuentes.js && node tests/test_tiempo.js && node tests/test_puente.js && node tests/test_outlook_salida.js","humo":"electron . --humo"},"devDependencies":{"electron":"45.3.1"}}

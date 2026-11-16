@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Panel</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'">
+<link rel="stylesheet" href="panel.css"></head>
+<body>
+<div id="raya"></div>
+<main id="panel">
+  <header>
+    <div><div id="hora">--:--</div><div id="fecha"></div></div>
+    <div class="botones">
+      <button id="act" title="Actualizar" aria-label="Actualizar">⟳</button>
+      <button id="pin" title="Fijar abierto" aria-label="Fijar abierto">📌</button>
+    </div>
+  </header>
+  <nav id="tabs" role="tablist" aria-label="Secciones">
+    <button role="tab" id="t-alarmas" data-tab="alarmas" aria-controls="p-alarmas" aria-selected="false"><i>⏰</i><span>Alarmas</span><b class="globo" id="g-alarmas" hidden></b></button>
+    <button role="tab" id="t-correo" data-tab="correo" aria-controls="p-correo" aria-selected="false"><i>✉️</i><span>Correo</span><b class="globo" id="chip" hidden></b></button>
+    <button role="tab" id="t-agenda" data-tab="agenda" aria-controls="p-agenda" aria-selected="false"><i>📅</i><span>Agenda</span></button>
+    <button role="tab" id="t-tiempo" data-tab="tiempo" aria-controls="p-tiempo" aria-selected="false"><i>🌤️</i><span>Tiempo</span></button>
+    <button role="tab" id="t-sistema" data-tab="sistema" aria-controls="p-sistema" aria-selected="false"><i>📊</i><span>Sistema</span></button>
+  </nav>
+  <div id="paneles">
+    <section class="pestana" id="p-alarmas" role="tabpanel" aria-labelledby="t-alarmas" hidden>
+      <input id="al-rapido" class="campo" autocomplete="off" placeholder="Pizza 25m · Examen 20/11 09:30 · cron Estudio">
+      <div id="al-vista"></div>
+      <button id="al-masc" class="btn-sec">Campos detallados ▾</button>
+      <div id="al-det" class="tarjeta" hidden>
+        <label>Nombre<input id="al-nombre" class="campo" maxlength="60"></label>
+        <label>Tipo<select id="al-tipo" class="campo"><option value="cuenta">Cuenta atrás (duración)</option><option value="fecha">Alarma a fecha y hora</option><option value="recurrente">Repetir (días de la semana)</option><option value="crono">Cronómetro</option></select></label>
+        <div class="duracion" id="al-dcuenta"><label>Días<input id="al-dd" class="campo" type="number" min="0" value="0"></label><label>Horas<input id="al-hh" class="campo" type="number" min="0" value="0"></label><label>Minutos<input id="al-mm" class="campo" type="number" min="0" value="5"></label></div>
+        <label id="al-dfecha" hidden>Fecha y hora<input id="al-cuando" class="campo" type="datetime-local"></label>
+        <div id="al-drec" hidden><div class="dsem" id="al-dias"></div><label>Hora<input id="al-hora" class="campo" type="time" value="08:00"></label></div>
+        <button id="al-anadir" class="btn-txt">Añadir</button>
+      </div>
+      <h2 id="al-cuenta">Activas</h2>
+      <div id="al-sinc"><button id="al-refrescar" class="btn-sec" title="Leer Outlook y Post-It ahora">⟳ Sincronizar</button><label class="v">Ver próximos <input id="al-ventana" class="campo" type="number" min="1" max="365"> días</label></div>
+      <div id="al-estado"></div>
+      <div id="al-lista"></div>
+    </section>
+    <section class="pestana" id="p-correo" role="tabpanel" aria-labelledby="t-correo" hidden>
+      <h2>Bandeja de entrada <span id="obs" class="aviso"></span></h2>
+      <div id="correo"><div class="vacio">Cargando…</div></div>
+    </section>
+    <section class="pestana" id="p-agenda" role="tabpanel" aria-labelledby="t-agenda" hidden><div id="agenda"></div></section>
+    <section class="pestana" id="p-tiempo" role="tabpanel" aria-labelledby="t-tiempo" hidden><div id="tiempo"><div class="vacio">Cargando el tiempo…</div></div></section>
+    <section class="pestana" id="p-sistema" role="tabpanel" aria-labelledby="t-sistema" hidden><div id="sistema"></div></section>
+  </div>
+</main>
+<script src="tiempo.js"></script>
+<script src="pestana_alarmas.js"></script>
+<script src="panel.js"></script>
+</body></html>
