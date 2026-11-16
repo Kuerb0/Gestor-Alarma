@@ -1,10 +1,10 @@
 const assert = require('node:assert');
-const { normalizar } = require('../correo');
+const { normalizar, validarEvento } = require('../correo');
 const { wmo, armar, leer: leerMeteo } = require('../meteo');
 
 // correo.normalizar: 0, 1 y varios elementos (ConvertTo-Json colapsa arrays)
 let r = normalizar('{"ok":true,"noLeidos":0,"correos":[],"agenda":null}');
-assert.deepStrictEqual(r, { ok: true, noLeidos: 0, correos: [], agenda: [] });
+assert.deepStrictEqual(r, { ok: true, noLeidos: 0, correos: [], agenda: [], categorias: [] });
 const c1 = { id: 'A', de: 'X', asunto: 'S', fecha: '2026-11-16T09:00:00', leido: false };
 r = normalizar(JSON.stringify({ ok: true, noLeidos: 1, correos: c1, agenda: { titulo: 'T', inicio: '2026-11-16T10:00:00', fin: '2026-11-16T11:00:00', todoDia: false, lugar: '' } }));
 assert.deepStrictEqual(r.correos, [c1]); assert.strictEqual(r.agenda.length, 1); assert.strictEqual(r.noLeidos, 1);
@@ -44,3 +44,17 @@ r = normalizar(JSON.stringify({ ok: true, noLeidos: 0, correos: [], agenda: [{ t
 assert.deepStrictEqual([r.agenda[0].categoria, r.agenda[0].color, r.agenda[1].categoria, r.agenda[1].color], ['Rojo', '#e5533d', '', null]);
 r = normalizar(JSON.stringify({ ok: true, correos: [], agenda: [{ titulo: 'C', color: 'rojo' }] }));
 assert.strictEqual(r.agenda[0].color, null);
+
+// categorías: propaga, color inválido -> null, una sola como objeto, sin nombre se descarta
+r = normalizar(JSON.stringify({ ok: true, correos: [], agenda: [], categorias: [{ nombre: 'Trabajo', color: '#e5533d' }, { nombre: 'Sin color', color: null }, { color: '#e5533d' }] }));
+assert.deepStrictEqual(r.categorias, [{ nombre: 'Trabajo', color: '#e5533d' }, { nombre: 'Sin color', color: null }]);
+assert.deepStrictEqual(normalizar('{"ok":true,"categorias":{"nombre":"A","color":"#3a86ff"}}').categorias, [{ nombre: 'A', color: '#3a86ff' }]);
+assert.deepStrictEqual(normalizar('{"ok":true}').categorias, []);
+
+// validarEvento
+const ev = { titulo: 'Dentista', inicio: '2030-01-01T10:00:00', fin: '2030-01-01T11:00:00', todoDia: false, lugar: '', categoria: '' };
+assert.strictEqual(validarEvento(ev), null);
+assert.strictEqual(validarEvento({ ...ev, categoria: 'Salud', lugar: 'Clínica' }), null);
+for (const mal of [null, 'x', { ...ev, titulo: '  ' }, { ...ev, titulo: 'a'.repeat(201) }, { ...ev, titulo: 5 }, { ...ev, inicio: 'ayer' }, { ...ev, inicio: '2030-02-31T10:00:00' },
+  { ...ev, fin: ev.inicio }, { ...ev, fin: '2030-01-01T09:00:00' }, { ...ev, categoria: 3 }, { ...ev, lugar: {} }]) assert.ok(validarEvento(mal), JSON.stringify(mal));
+assert.strictEqual(validarEvento({ ...ev, titulo: 'a'.repeat(200) }), null);

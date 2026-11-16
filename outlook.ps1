@@ -1,9 +1,11 @@
 # Lee Outlook clásico ya abierto (bandeja de entrada + agenda de los próximos 7 días) y lo escribe como JSON. Lo llama correo.js.
 # Uso: outlook.ps1            -> lee correos y agenda
 #      outlook.ps1 -Abrir ID  -> abre ese elemento (EntryID) y trae Outlook al frente
+#      outlook.ps1 -Crear F [-Ensayo] -> crea el evento del JSON F {titulo,inicio,fin,todoDia,lugar,categoria} en el calendario predeterminado; salida {ok,id}.
+#                                        Con -Ensayo monta el evento pero lo descarta sin guardar: {ok,ensayo}
 #      outlook.ps1 -Leidos F  -> marca como leídos los EntryIDs del array JSON del fichero F; salida {ok,hechos,fallos}
 # Códigos de salida: 0 = ok · 3 = Outlook cerrado (no se abre solo) · 4 = Outlook no instalado · 5 = otro error
-param([string]$Abrir, [string]$Leidos)
+param([string]$Abrir, [string]$Leidos, [string]$Crear, [switch]$Ensayo)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 
@@ -32,6 +34,23 @@ try {
     exit 0
   }
 
+  if ($Crear) {
+    $j = Get-Content -LiteralPath $Crear -Raw -Encoding UTF8 | ConvertFrom-Json
+    $ci = [Globalization.CultureInfo]::InvariantCulture; $fmt = 'yyyy-MM-ddTHH:mm:ss'
+    $it = $ol.CreateItem(1)   # olAppointmentItem, en el calendario predeterminado
+    $it.Subject = [string]$j.titulo
+    $it.AllDayEvent = [bool]$j.todoDia
+    $it.Start = [datetime]::ParseExact([string]$j.inicio, $fmt, $ci)
+    $it.End = [datetime]::ParseExact([string]$j.fin, $fmt, $ci)
+    if ($j.lugar) { $it.Location = [string]$j.lugar }
+    if ($j.categoria) { $it.Categories = [string]$j.categoria }
+    if ($j.todoDia) { $it.ReminderSet = $false } else { $it.ReminderSet = $true; $it.ReminderMinutesBeforeStart = 15 }
+    if ($Ensayo) { $it.Close(1); [ordered]@{ ok = $true; ensayo = $true } | ConvertTo-Json -Compress; exit 0 }   # 1 = olDiscard
+    $it.Save()
+    [ordered]@{ ok = $true; id = [string]$it.EntryID } | ConvertTo-Json -Compress
+    exit 0
+  }
+
   # Correos: los 40 más recientes de la Bandeja de entrada del almacén predeterminado
   $bandeja = $ns.GetDefaultFolder(6)
   $its = $bandeja.Items; $its.Sort('[ReceivedTime]', $true)
@@ -48,11 +67,11 @@ try {
   $d0 = (Get-Date).Date; $d1 = $d0.AddDays(7)
   $us = [Globalization.CultureInfo]::GetCultureInfo('en-US')
   $filtro = "[Start] < '" + $d1.ToString('MM/dd/yyyy hh:mm tt', $us) + "' AND [End] > '" + $d0.ToString('MM/dd/yyyy hh:mm tt', $us) + "'"
-  $agenda = New-Object Collections.Generic.List[object]; $vistos = @{}
+  $agenda = New-Object Collections.Generic.List[object]; $vistos = @{}; $categorias = New-Object Collections.Generic.List[object]; $nombres = @{}
   foreach ($st in $ns.Stores) {
-    try { $cal = $st.GetDefaultFolder(9) } catch { continue }
     $col = @{}
-    try { foreach ($c in $st.Categories) { $h = $paleta[[int]$c.Color]; if ($h) { $col[[string]$c.Name] = $h } } } catch { }
+    try { foreach ($c in $st.Categories) { $h = $paleta[[int]$c.Color]; $n = [string]$c.Name; if ($h) { $col[$n] = $h }; if ($n -and -not $nombres[$n]) { $nombres[$n] = 1; $categorias.Add([ordered]@{ nombre = $n; color = $h }) } } } catch { }
+    try { $cal = $st.GetDefaultFolder(9) } catch { continue }
     $items = $cal.Items; $items.Sort('[Start]'); $items.IncludeRecurrences = $true
     foreach ($a in $items.Restrict($filtro)) {
       $ini = $a.Start
@@ -63,5 +82,5 @@ try {
       $agenda.Add([ordered]@{ titulo = [string]$a.Subject; inicio = $ini.ToString('s'); fin = $a.End.ToString('s'); todoDia = [bool]$a.AllDayEvent; lugar = [string]$a.Location; categoria = $cat; color = $color })
     }
   }
-  [ordered]@{ ok = $true; noLeidos = [int]$bandeja.UnReadItemCount; correos = $correos.ToArray(); agenda = $agenda.ToArray() } | ConvertTo-Json -Depth 5 -Compress  # ToArray: @(List) falla en PS 5.1 («Los tipos de argumentos no coinciden»)
+  [ordered]@{ ok = $true; noLeidos = [int]$bandeja.UnReadItemCount; correos = $correos.ToArray(); agenda = $agenda.ToArray(); categorias = $categorias.ToArray() } | ConvertTo-Json -Depth 5 -Compress  # ToArray: @(List) falla en PS 5.1 («Los tipos de argumentos no coinciden»)
 } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 5 }

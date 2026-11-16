@@ -20,6 +20,9 @@ Gestor-Alarma: panel lateral para Windows (Electron), fijo al **borde derecho** 
 
 Datos del panel en `%APPDATA%\panel`: `ajustes.json` y `panel.log`.
 
+## Crear eventos de Outlook (pestaña Agenda)
+Botón «＋ Evento» (o clic en la cabecera de un día, que lo deja elegido): escribe `Dentista mañana 10:00`, `viernes 20:00` o `20/11 09:30` y la vista previa muestra título y tramo. Elige duración (30 min · 1 h · 2 h · Todo el día; sin hora = todo el día), una etiqueta (las categorías de Outlook, con su color) y, si quieres, «+ lugar». Intro o «Añadir a Outlook» lo crea en el calendario predeterminado con aviso 15 min antes (sin aviso si es de todo el día); Esc cancela. Necesita Outlook clásico abierto (`outlook.ps1 -Crear`; con `-Ensayo` lo monta sin guardar nada).
+
 ## Pestaña Alarmas
 Además de la pestaña, una columna de fichas giratorias (split-flap) en la **esquina superior derecha** del monitor, sin fondo, siempre encima y **click-through** (`overlay.html`/`overlay.js`): cuentas atrás, alarmas a fecha y hora, recurrentes y cronómetros. Máximo 5 tarjetas (primero lo que suena, luego perdidas, cuentas atrás por cercanía y cronómetros); el resto, «+N más».
 

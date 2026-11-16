@@ -25,6 +25,7 @@ function normalizar(crudo) {
       noLeidos: Number(j.noLeidos) || 0,
       correos: arr(j.correos).map(c => ({ id: String(c.id || ''), de: String(c.de || ''), asunto: String(c.asunto || ''), fecha: String(c.fecha || ''), leido: !!c.leido })),
       agenda: arr(j.agenda).map(a => ({ titulo: String(a.titulo || ''), inicio: String(a.inicio || ''), fin: String(a.fin || ''), todoDia: !!a.todoDia, lugar: String(a.lugar || ''), categoria: String(a.categoria || ''), color: /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : null })),
+      categorias: arr(j.categorias).filter(c => c && c.nombre).map(c => ({ nombre: String(c.nombre), color: /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : null })),
     };
   } catch (e) { return { ok: false, motivo: 'error', detalle: e.message }; }
 }
@@ -57,4 +58,35 @@ async function marcarLeidos(ids) {
   finally { try { fs.unlinkSync(f); } catch {} }
 }
 
-module.exports = { leer, abrir, marcarLeidos, normalizar };
+// Pura: valida el evento a crear. Devuelve null si está bien o el motivo.
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+function validarEvento(ev) {
+  if (!ev || typeof ev !== 'object') return 'evento no válido';
+  const t = typeof ev.titulo === 'string' ? ev.titulo.trim() : '';
+  if (t.length < 1 || t.length > 200) return 'el título debe tener de 1 a 200 caracteres';
+  if (typeof ev.inicio !== 'string' || typeof ev.fin !== 'string' || !ISO.test(ev.inicio) || !ISO.test(ev.fin)) return 'fechas no válidas';
+  const a = new Date(ev.inicio), b = new Date(ev.fin);
+  if (isNaN(a) || isNaN(b)) return 'fechas no válidas';
+  if (a >= b) return 'el inicio debe ser anterior al fin';
+  if (ev.categoria != null && typeof ev.categoria !== 'string') return 'categoría no válida';
+  if (ev.lugar != null && typeof ev.lugar !== 'string') return 'lugar no válido';
+  return null;
+}
+
+// Crea un evento en el calendario predeterminado. Con { ensayo } valida y monta todo en Outlook pero no guarda nada.
+async function crearEvento(ev, { ensayo = false } = {}) {
+  const mal = validarEvento(ev);
+  if (mal) return { ok: false, motivo: mal };
+  const f = path.join(os.tmpdir(), `panel-evento-${process.pid}-${Date.now()}.json`);
+  try {
+    fs.writeFileSync(f, JSON.stringify({ titulo: ev.titulo.trim(), inicio: ev.inicio, fin: ev.fin, todoDia: !!ev.todoDia, lugar: (ev.lugar || '').trim(), categoria: ev.categoria || '' }));
+    const r = await ps(['-Crear', f, ...(ensayo ? ['-Ensayo'] : [])]);
+    if (r.codigo !== 0) return { ok: false, motivo: r.codigo === 3 ? 'Outlook está cerrado' : r.codigo === 4 ? 'Falta Outlook clásico' : 'No se pudo crear el evento' + (r.err.trim() ? ': ' + r.err.trim().slice(0, 150) : '') };
+    const j = JSON.parse(r.out.replace(/^﻿/, ''));
+    if (j.ok !== true) return { ok: false, motivo: 'No se pudo crear el evento' };
+    return ensayo ? { ok: true, ensayo: true } : { ok: true, id: String(j.id || '') };
+  } catch (e) { return { ok: false, motivo: 'No se pudo crear el evento: ' + e.message }; }
+  finally { try { fs.unlinkSync(f); } catch {} }
+}
+
+module.exports = { leer, abrir, marcarLeidos, normalizar, crearEvento, validarEvento };

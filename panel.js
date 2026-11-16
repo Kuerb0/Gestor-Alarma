@@ -100,7 +100,7 @@ function pintaCorreo(r) {
     c.innerHTML = r.correos.length ? r.correos.map(m => `<div class="fila-correo${m.leido ? '' : ' nl'}" data-id="${esc(m.id)}" title="${esc(m.asunto)}" tabindex="0" aria-selected="false"><span class="p"></span><button class="chk" tabindex="-1" role="checkbox" aria-checked="false" aria-label="Seleccionar">${SVG_OK}</button><span class="de">${esc(m.de)}</span>${m.leido ? '' : `<button class="leer" tabindex="-1" title="Marcar como leído" aria-label="Marcar como leído">${SVG_SOBRE}</button>`}<span class="h">${fechaCorta(m.fecha)}</span><span class="as">${esc(m.asunto)}</span></div>`).join('') : '<div class="vacio">Sin correos</div>';
   }
   sel = new Set([...sel].filter(id => correo && correo.ok && correo.correos.some(m => m.id === id))); sel.size || (ancla = -1); marcaSel();
-  pintaAgenda();
+  pintaAgenda(); if (!evForm.hidden) evPintaChips();
 }
 // selección múltiple: Ctrl+clic alterna, Mayús+clic rango, Espacio alterna en la fila enfocada
 const SVG_OK = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
@@ -148,11 +148,89 @@ function pintaAgenda() {
   const dia = i => {
     const d = new Date(h.getFullYear(), h.getMonth(), h.getDate() + i), ini = d.getTime(), f = new Date(h.getFullYear(), h.getMonth(), h.getDate() + i + 1).getTime();
     const ev = eventos.filter(e => { const a = new Date(e.inicio).getTime(), b = new Date(e.fin || e.inicio).getTime(); return a < f && Math.max(b, a + 1) > ini; }).sort((x, y) => new Date(x.inicio) - new Date(y.inicio));
-    return `<div class="diah">${nombre(d, i)}</div>` + (ev.length ? ev.map(e => `<div class="evento"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}</div>`).join('') : '<div class="vacio">Sin eventos</div>');
+    return `<div class="diah" role="button" tabindex="0" data-i="${i}" title="Añadir evento este día">${nombre(d, i)}</div>` + (ev.length ? ev.map(e => `<div class="evento"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}</div>`).join('') : '<div class="vacio">Sin eventos</div>');
   };
-  $('agenda').innerHTML = '<h2>Agenda · 7 días</h2>' + Array.from({ length: 7 }, (_, i) => dia(i)).join('');
+  $('agenda').innerHTML = Array.from({ length: 7 }, (_, i) => dia(i)).join('');
   $('agenda').querySelectorAll('.evento[data-c]').forEach(el => el.style.setProperty('--c', el.dataset.c)); // CSP: sin style inline en el HTML
 }
+
+// ---- nuevo evento (formulario de la Agenda)
+const evForm = $('ev-form');
+let evDia = null, evDur = 60, evCat = '', evBusy = false, evAvisoT = 0;
+const evIso = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:00`;
+const evFecha = d => d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'numeric' }).replace('.', '').replace(/, /, ' ');
+// Texto -> { ev, ini, fin } o { error }. Sin fecha en el texto usa el día elegido (evDia); sin hora = todo el día.
+function evLeer() {
+  const t = $('ev-texto').value.trim(); if (!t) return { error: '' };
+  const hayHora = /(?<![\d:])\d{1,2}:\d{2}(?![\d:])/.test(t), hayFecha = /\d{1,2}\/\d{1,2}|(?<![\p{L}])(hoy|ma[ñn]ana|pasado|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)(?![\p{L}])/iu.test(t);
+  let ini, titulo;
+  if (evDia && !hayFecha) {
+    const r = hayHora ? Tiempo.parsear(t, evDia.getTime()) : null;
+    if (r && !r.ok) return { error: r.error };
+    if (r && r.rec.tipo !== 'fecha') return { error: 'Escribe una hora (10:00) o déjalo sin hora para todo el día' };
+    ini = r ? new Date(r.rec.objetivo) : new Date(evDia); titulo = r ? r.rec.nombre : t;
+  } else {
+    const r = Tiempo.parsear(t, Date.now());
+    if (!r.ok) return { error: r.error };
+    if (r.rec.tipo !== 'fecha') return { error: 'Falta la fecha: «mañana 10:00», «viernes 20:00», «20/11 09:30»' };
+    ini = new Date(r.rec.objetivo); titulo = r.rec.nombre;
+  }
+  const todoDia = evDur === 0 || !hayHora;
+  if (todoDia) ini = dia0(ini);
+  const fin = todoDia ? new Date(ini.getFullYear(), ini.getMonth(), ini.getDate() + 1) : new Date(ini.getTime() + (evDur || 60) * 6e4);
+  return { ev: { titulo, inicio: evIso(ini), fin: evIso(fin), todoDia, lugar: $('ev-lugar-i').value, categoria: evCat }, ini, fin };
+}
+function evVista() {
+  const v = $('ev-vista'), r = evLeer(); v.className = ''; v.textContent = '';
+  if (r.error != null) { if (r.error) { v.className = 'mal'; v.textContent = r.error; } else if (evDia) v.textContent = 'Día: ' + evFecha(evDia); return r; }
+  v.append(Object.assign(document.createElement('b'), { textContent: r.ev.titulo }), ' · ' + evFecha(r.ini) + (r.ev.todoDia ? ' · todo el día' : ' ' + hhmm(r.ini) + '–' + hhmm(r.fin)));
+  return r;
+}
+function evPintaChips() {
+  const cats = correo && correo.ok ? correo.categorias || [] : [];
+  if (evCat && !cats.some(c => c.nombre === evCat)) evCat = '';
+  const box = $('ev-chips'); box.hidden = !cats.length; box.textContent = '';
+  cats.forEach(c => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'ev-chip'; b.textContent = c.nombre; b.setAttribute('aria-pressed', c.nombre === evCat);
+    if (c.color) b.style.setProperty('--c', c.color); else b.classList.add('sin');
+    b.onclick = () => { evCat = evCat === c.nombre ? '' : c.nombre; box.querySelectorAll('.ev-chip').forEach(x => x.setAttribute('aria-pressed', x.textContent === evCat)); };
+    box.append(b);
+  });
+}
+function evAbrir(dia) {
+  evDia = dia || null; evForm.hidden = false; $('ev-abrir').setAttribute('aria-expanded', 'true'); evPintaChips(); evVista(); $('ev-texto').focus();
+}
+function evCerrar() {
+  evForm.hidden = true; $('ev-abrir').setAttribute('aria-expanded', 'false'); evDia = null; evCat = ''; evDur = 60;
+  $('ev-texto').value = ''; $('ev-lugar-i').value = ''; $('ev-lugar').hidden = true; $('ev-mas').hidden = false;
+  document.querySelectorAll('.ev-dur').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === '60'));
+}
+function evAviso(txt) {
+  let a = $('ev-aviso'); if (!a) { a = document.createElement('div'); a.id = 'ev-aviso'; a.setAttribute('role', 'status'); $('agenda').before(a); }
+  a.textContent = txt; clearTimeout(evAvisoT); evAvisoT = setTimeout(() => a.remove(), 3500);
+}
+$('ev-abrir').onclick = () => evForm.hidden ? evAbrir() : evCerrar();
+$('ev-cancelar').onclick = () => { evCerrar(); $('ev-abrir').focus(); };
+$('ev-texto').addEventListener('input', evVista); $('ev-lugar-i').addEventListener('input', evVista);
+$('ev-mas').onclick = () => { $('ev-lugar').hidden = false; $('ev-mas').hidden = true; $('ev-lugar-i').focus(); };
+$('ev-dur').onclick = e => {
+  const b = e.target.closest('.ev-dur'); if (!b) return;
+  evDur = +b.dataset.m; document.querySelectorAll('.ev-dur').forEach(x => x.setAttribute('aria-pressed', x === b)); evVista();
+};
+evForm.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); evCerrar(); $('ev-abrir').focus(); } });
+evForm.onsubmit = async e => {
+  e.preventDefault(); if (evBusy) return;
+  const r = evVista(); if (!r.ev) { if (!r.error) { $('ev-vista').className = 'mal'; $('ev-vista').textContent = 'Escribe el evento'; } return; }
+  evBusy = true; $('ev-crear').disabled = true; $('ev-crear').textContent = 'Creando…';
+  let g; try { g = await api.crearEvento(r.ev); } catch { g = { ok: false, motivo: 'No se pudo crear el evento' }; }
+  evBusy = false; $('ev-crear').disabled = false; $('ev-crear').textContent = 'Añadir a Outlook';
+  if (g && g.ok) { evCerrar(); evAviso('Añadido a Outlook'); } else { $('ev-vista').className = 'mal'; $('ev-vista').textContent = (g && g.motivo) || 'No se pudo crear el evento'; }
+};
+const evDiaClic = e => {
+  const d = e.target.closest('.diah'); if (!d || (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ')) return;
+  e.preventDefault(); const h = dia0(new Date()); evAbrir(new Date(h.getFullYear(), h.getMonth(), h.getDate() + +d.dataset.i));
+};
+$('agenda').addEventListener('click', evDiaClic); $('agenda').addEventListener('keydown', evDiaClic);
 
 // ---- sistema
 const barra = (n, v, txt, inv) => `<div class="barra">${n} · ${txt}<progress max="100" value="${Math.min(100, Math.max(0, Math.round(v)))}" class="${(inv ? v < 15 : v > 85) ? 'alto' : ''}"></progress></div>`;

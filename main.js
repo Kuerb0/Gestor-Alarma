@@ -169,6 +169,18 @@ ipcMain.on('marcar-leidos', (_, ids) => {
   if (HUMO) { const c = cache.correo; if (c && c.correos) { c.correos.forEach(x => { if (ids.includes(x.id)) x.leido = true; }); c.noLeidos = c.correos.filter(x => !x.leido).length; enviar('correo', c); } return; }
   if (Correo) Correo.marcarLeidos(ids).then(r => { if (!r.ok) log('marcar leídos falló'); leerCorreo(); }).catch(e => log('marcar leídos ' + e.message));
 });
+ipcMain.handle('crear-evento', async (_, ev) => {
+  const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+  if (HUMO) { // sin Outlook: el evento se añade a los datos inventados
+    const c = cache.correo;
+    if (!ev || typeof ev.titulo !== 'string' || !iso.test(ev.inicio) || !iso.test(ev.fin) || !c || !c.agenda) return { ok: false, motivo: 'evento no válido' };
+    const k = (c.categorias || []).find(x => x.nombre === ev.categoria);
+    c.agenda.push({ titulo: ev.titulo, inicio: ev.inicio, fin: ev.fin, todoDia: !!ev.todoDia, lugar: ev.lugar || '', categoria: k ? k.nombre : '', color: k ? k.color : null });
+    enviar('correo', c); return { ok: true, id: 'humo' };
+  }
+  if (!Correo) return { ok: false, motivo: 'Outlook no disponible' };
+  try { const r = await Correo.crearEvento(ev); if (r.ok) leerCorreo(); return r; } catch (e) { log('crear evento ' + e.message); return { ok: false, motivo: 'No se pudo crear el evento' }; }
+});
 ipcMain.on('abrir-outlook', () => { try { spawn('cmd', ['/c', 'start', '', 'outlook'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref(); } catch (e) { log('outlook ' + e.message); } });
 ipcMain.on('fijar', (_, b) => fijar(b === true));
 ipcMain.on('actualizar', actualizar);
@@ -200,6 +212,7 @@ async function humo() {
   const de = ['Ana García', 'Banco Norte', 'Equipo de Proyectos', 'Luis Pérez', 'GitHub', 'Marta Ruiz', 'Newsletter Semanal', 'Carlos Vega'];
   const as = ['Reunión de mañana: confirmar asistencia y orden del día', 'Resumen de tu cuenta', 'Planificación del trimestre', 'Re: presupuesto', 'Nuevo inicio de sesión', 'Cena del viernes', 'Las novedades de la semana', 'Factura 2026-114'];
   enviar('correo', { ok: true, noLeidos: 3, correos: de.map((x, i) => ({ id: 'c' + i, de: x, asunto: as[i], fecha: iso(ahora - i * 7 * h), leido: i > 2 })),
+    categorias: [{ nombre: 'Trabajo', color: '#e5533d' }, { nombre: 'Salud', color: '#3a86ff' }, { nombre: 'Proyectos', color: '#3fa34d' }, { nombre: 'Urgente', color: '#f08c2e' }, { nombre: 'Personal', color: '#a06bff' }],
     agenda: [ // 9 eventos en 7 días: hoy 3 (uno de todo el día), mañana 1, +2 vacío, +3 2, +4 1, +5 vacío, +6 2
       { titulo: 'Cumpleaños de Marta', inicio: iso(h0), fin: iso(h0 + d), todoDia: true, lugar: '' },
       { titulo: 'Reunión de equipo', inicio: iso(h0 + 0 * d + 10 * h), fin: iso(h0 + 0 * d + 11 * h), todoDia: false, lugar: '', categoria: 'Trabajo', color: '#e5533d' },
@@ -207,7 +220,7 @@ async function humo() {
       { titulo: 'Dentista', inicio: iso(h0 + 1 * d + 10 * h), fin: iso(h0 + 1 * d + 11 * h), todoDia: false, lugar: 'Clínica', categoria: 'Salud', color: '#3a86ff' },
       { titulo: 'Revisión de proyecto', inicio: iso(h0 + 3 * d + 9 * h), fin: iso(h0 + 3 * d + 10.5 * h), todoDia: false, lugar: 'Sala 2', categoria: 'Proyectos', color: '#3fa34d' },
       { titulo: 'Comida con Luis', inicio: iso(h0 + 3 * d + 13.5 * h), fin: iso(h0 + 3 * d + 15 * h), todoDia: false, lugar: 'Restaurante' },
-      { titulo: 'Entrega de informe', inicio: iso(h0 + 4 * d + 16 * h), fin: iso(h0 + 4 * d + 17 * h), todoDia: false, lugar: '', categoria: 'Urgente', color: '#e5533d' },
+      { titulo: 'Entrega de informe', inicio: iso(h0 + 4 * d + 16 * h), fin: iso(h0 + 4 * d + 17 * h), todoDia: false, lugar: '', categoria: 'Urgente', color: '#f08c2e' },
       { titulo: 'Visita al médico', inicio: iso(h0 + 6 * d + 11 * h), fin: iso(h0 + 6 * d + 12 * h), todoDia: false, lugar: 'Centro de salud' },
       { titulo: 'Cena de cumpleaños', inicio: iso(h0 + 6 * d + 19 * h), fin: iso(h0 + 6 * d + 21 * h), todoDia: false, lugar: 'Casa de Ana' }] });
   const nd = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes'], ic = ['☀️', '⛅', '🌧️', '☁️', '🌤️'];
@@ -237,6 +250,21 @@ async function humo() {
   await captura('overlay', Alarmas.overlay());
   const n = (w, s) => js(w, `document.querySelectorAll('${s}').length`);
   for (const [s, esperadas] of [['.fila', 12], ['.fila-correo', 8], ['.evento', 9]]) { const v = await n(win, s); if (v !== esperadas) fallos.push(`${s}: ${v} (esperadas ${esperadas})`); }
+  // nuevo evento: abrir formulario, escribir, elegir la primera etiqueta, capturas (claro y oscuro) y crear
+  await js(win, `document.querySelector('button[data-tab="agenda"]').click()`); await esp(300);
+  await js(win, `document.getElementById('ev-abrir').click()`);
+  if (!await js(win, `document.activeElement && document.activeElement.id === 'ev-texto'`)) fallos.push('el texto del evento no recibe el foco');
+  await js(win, `(t => { t.value = 'Prueba humo mañana 10:00'; t.dispatchEvent(new Event('input')); document.querySelector('.ev-chip')?.click(); })(document.getElementById('ev-texto'))`);
+  if (!/Prueba humo/.test(await js(win, `document.getElementById('ev-vista').textContent`))) fallos.push('sin vista previa del evento');
+  if (await js(win, `document.querySelector('.ev-chip[aria-pressed="true"]') ? 1 : 0`) !== 1) fallos.push('no se pudo elegir la etiqueta');
+  await esp(400); await captura('panel-agenda-nuevo-claro', win);
+  nativeTheme.themeSource = 'system'; await esp(400); await captura('panel-agenda-nuevo', win);
+  await js(win, `document.getElementById('ev-crear').click()`); await esp(600);
+  if (await js(win, `document.getElementById('ev-form').hidden`) !== true) fallos.push('el formulario no se cerró tras crear');
+  if (!/Añadido/.test(await js(win, `document.getElementById('ev-aviso')?.textContent || ''`))) fallos.push('sin aviso «Añadido a Outlook»');
+  const nev = await n(win, '.evento'); if (nev !== 10) fallos.push(`.evento tras crear: ${nev} (esperadas 10)`);
+  await js(win, `document.querySelector('.diah[data-i="2"]').click()`);
+  if (!/Día:/.test(await js(win, `document.getElementById('ev-vista').textContent`))) fallos.push('clic en el día no abre el formulario con ese día');
   const tarjetas = await n(Alarmas.overlay(), '.tarjeta');
   if (tarjetas !== 5) fallos.push('tarjetas visibles: ' + tarjetas + ' (esperadas 5)');
   console.log(fallos.length ? 'HUMO FALLA\n' + fallos.join('\n') : 'HUMO OK · capturas en ' + salida);

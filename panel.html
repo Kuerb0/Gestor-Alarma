@@ -42,7 +42,18 @@
       <div id="cbarra" hidden><span id="cn"></span><button class="btn-sec" id="c-leer">Marcar como leído</button><button class="btn-sec" id="c-todo">Seleccionar todo</button><button class="btn-sec" id="c-nada">Cancelar</button></div>
       <div id="correo"><div class="vacio">Cargando…</div></div>
     </section>
-    <section class="pestana" id="p-agenda" role="tabpanel" aria-labelledby="t-agenda" hidden><div id="agenda"></div></section>
+    <section class="pestana" id="p-agenda" role="tabpanel" aria-labelledby="t-agenda" hidden>
+      <h2>Agenda · 7 días <button id="ev-abrir" class="btn-sec" aria-expanded="false" aria-controls="ev-form">＋ Evento</button></h2>
+      <form id="ev-form" class="tarjeta" autocomplete="off" hidden>
+        <label>Evento<input id="ev-texto" class="campo" maxlength="200" placeholder="Dentista mañana 10:00 · viernes 20:00 · 20/11 09:30"></label>
+        <div id="ev-vista" role="status"></div>
+        <div class="ev-fila" role="group" aria-label="Duración" id="ev-dur"><button type="button" class="ev-dur" data-m="30" aria-pressed="false">30 min</button><button type="button" class="ev-dur" data-m="60" aria-pressed="true">1 h</button><button type="button" class="ev-dur" data-m="120" aria-pressed="false">2 h</button><button type="button" class="ev-dur" data-m="0" aria-pressed="false">Todo el día</button></div>
+        <div class="ev-fila" role="group" aria-label="Etiqueta de Outlook" id="ev-chips"></div>
+        <button type="button" id="ev-mas" class="ev-enlace" aria-expanded="false" aria-controls="ev-lugar">+ lugar</button>
+        <label id="ev-lugar" hidden>Lugar<input id="ev-lugar-i" class="campo" maxlength="120"></label>
+        <div class="ev-fila"><button type="submit" id="ev-crear" class="btn-txt">Añadir a Outlook</button><button type="button" id="ev-cancelar" class="btn-sec">Cancelar</button></div>
+      </form>
+      <div id="agenda"></div></section>
     <section class="pestana" id="p-tiempo" role="tabpanel" aria-labelledby="t-tiempo" hidden><div id="tiempo"><div class="vacio">Cargando el tiempo…</div></div></section>
     <section class="pestana" id="p-sistema" role="tabpanel" aria-labelledby="t-sistema" hidden><div id="sistema"></div></section>
   </div>
