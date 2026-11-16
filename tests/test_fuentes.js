@@ -19,7 +19,7 @@ assert.strictEqual(wmo(48).texto, 'Niebla'); assert.strictEqual(wmo(63).texto, '
 assert.strictEqual(wmo(81).texto, 'Chubascos'); assert.strictEqual(wmo(86).icono, '❄️');
 assert.strictEqual(wmo(99).icono, '⛈️'); assert.ok(wmo(1234).texto);
 
-// armar: 2026-11-16 es lunes; son las 14:15 -> las horas empiezan a las 14:00
+// armar: 2026-11-16 es lunes; son las 14:15 -> las horas son las 24 de hoy desde las 00:00 y ahora = 14.25
 const horasT = [], dias = ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20'];
 for (let d = 16; d <= 17; d++) for (let h = 0; h < 24; h++) horasT.push(`2026-11-${d}T${String(h).padStart(2, '0')}:00`);
 const n = horasT.length;
@@ -32,9 +32,15 @@ const lugar = { nombre: 'Madrid', lat: 40.4, lon: -3.7 };
 const m = armar(j, lugar, new Date(2026, 10, 16, 14, 20));
 assert.strictEqual(m.ok, true); assert.deepStrictEqual(m.lugar, lugar);
 assert.deepStrictEqual(m.actual, { temp: 18, codigo: 3, texto: 'Nublado', icono: '☁️', viento: 12 });
-assert.strictEqual(m.horas.length, 12); assert.strictEqual(m.horas[0].hora, '14:00'); assert.strictEqual(m.horas[0].temp, 14);
+assert.strictEqual(m.horas.length, 24); assert.strictEqual(m.horas[0].hora, '00:00'); assert.strictEqual(m.horas[23].hora, '23:00'); assert.strictEqual(m.horas[0].temp, 0); assert.strictEqual(m.ahora, 14.25);
 assert.strictEqual(m.horas[0].icono, '🌧️'); assert.strictEqual(m.horas[0].lluvia, 30);
 assert.strictEqual(m.dias.length, 5);
 assert.deepStrictEqual(m.dias.map(d => d.nombre), ['Hoy', 'Mañana', 'Mié', 'Jue', 'Vie']);
 assert.strictEqual(m.dias[0].max, 21); assert.strictEqual(m.dias[0].min, 10); assert.strictEqual(m.dias[2].lluvia, 80);
 
+
+// agenda con categoría y color
+r = normalizar(JSON.stringify({ ok: true, noLeidos: 0, correos: [], agenda: [{ titulo: 'A', inicio: 'i', fin: 'f', todoDia: false, lugar: '', categoria: 'Rojo', color: '#e5533d' }, { titulo: 'B', inicio: 'i', fin: 'f', todoDia: false, lugar: '', categoria: '', color: null }] }));
+assert.deepStrictEqual([r.agenda[0].categoria, r.agenda[0].color, r.agenda[1].categoria, r.agenda[1].color], ['Rojo', '#e5533d', '', null]);
+r = normalizar(JSON.stringify({ ok: true, correos: [], agenda: [{ titulo: 'C', color: 'rojo' }] }));
+assert.strictEqual(r.agenda[0].color, null);

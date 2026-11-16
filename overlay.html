@@ -3,34 +3,37 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
 <title>Gestor de alarmas</title>
 <style>
-:root{--fa:#283040;--fb:#1b212c;--borde:#262c39;--ambar:#ffb000;--rojo:#ff5a4d;--font:"Cascadia Mono",Consolas,monospace}
+/* liquid glass: la ventana es transparente (sin desenfoque del escritorio), así que el tinte + sombra dan la legibilidad */
+:root{--acento:#4a9eff;--ambar:#ffb000;--rojo:#ff5a4d;--font:"Segoe UI Variable Display","Segoe UI Variable","Segoe UI",system-ui,sans-serif;
+  --vidrio:rgba(20,24,34,.72);--vidrio2:rgba(44,50,66,.62);--txt:#f2f5fa;--txt2:#b4bdcc;--sombra:rgba(0,0,0,.38);--ts:0 1px 2px rgba(0,0,0,.55);
+  --b1:rgba(255,255,255,.55);--b2:rgba(255,255,255,.08);--brillo:rgba(255,255,255,.2)}
+@media (prefers-color-scheme:light){:root{--vidrio:rgba(250,252,255,.78);--vidrio2:rgba(226,233,246,.7);--txt:#161b26;--txt2:#4a5568;--sombra:rgba(30,40,70,.3);--ts:0 1px 2px rgba(255,255,255,.7);
+  --b1:rgba(255,255,255,.95);--b2:rgba(255,255,255,.3);--brillo:rgba(255,255,255,.65)}}
 html,body{margin:0;background:transparent;overflow:hidden;font-family:var(--font)}
-#lista{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
-.tarjeta{--tn:#aab4c4;--th:#ffc94d;width:fit-content;padding:1px 2px 2px}
-.nom,.hora{display:flex;align-items:flex-start;white-space:nowrap}
-.nom{--w:9px;--h:13px;font-size:10px;--tx:var(--tn);margin-bottom:1px}
-.hora{--w:15px;--h:24px;font-size:19px;--tx:var(--th)}
-.sep{display:inline-block;width:6px;height:var(--h);line-height:var(--h);text-align:center;color:var(--tx);font-weight:700}
-.sep.esp{width:3px}
-
-/* ficha split-flap: arriba/abajo fijas (sup, inf) y dos hojas que giran (ab: la vieja cae, ba: la nueva sube) */
-.ficha{position:relative;display:inline-block;width:var(--w);height:var(--h);margin:0 .5px;perspective:140px;color:var(--tx);font-weight:700;text-align:center}
-.ficha i{position:absolute;left:0;right:0;height:50%;overflow:hidden;font-style:normal;backface-visibility:hidden}
-.ficha b{position:absolute;left:0;right:0;height:var(--h);line-height:var(--h);font-weight:700}
-.sup,.ab{top:0;transform-origin:50% 100%;background:var(--fa);border-radius:2px 2px 0 0}.sup b,.ab b{top:0}
-.inf,.ba{bottom:0;transform-origin:50% 0;background:var(--fb);border-radius:0 0 2px 2px}.inf b,.ba b{bottom:0}
-.ba{transform:rotateX(90deg)}
-.ficha::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;margin-top:-.5px;background:rgba(0,0,0,.55);z-index:5}
-.gira .ab{animation:cae .11s ease-in var(--d,0ms) forwards}
-.gira .ba{animation:sube .11s ease-out calc(var(--d,0ms) + .11s) forwards}
-@keyframes cae{to{transform:rotateX(-90deg)}}
-@keyframes sube{to{transform:rotateX(0)}}
-
-.sonando{animation:parp 1s steps(1) infinite}
-@keyframes parp{0%{--fa:#ffb000;--fb:#e29d00;--tn:#1a1000;--th:#1a1000}50%{}}
-.perdida{--tn:var(--rojo);--th:var(--rojo)}
-@media (prefers-reduced-motion:reduce){.sonando{animation:none;--fa:#ffb000;--fb:#e29d00;--tn:#1a1000;--th:#1a1000}.gira .ab,.gira .ba{animation-duration:1ms}}
-#mas{display:none;margin-top:4px;float:right;color:#9aa5b8;font-size:10px;padding:0 4px;text-shadow:0 0 3px #000,0 0 6px #000}
+body{padding:6px 10px 8px}
+#lista{display:flex;flex-direction:column;align-items:flex-end;gap:7px}
+.tarjeta{--th:var(--acento);position:relative;isolation:isolate;width:fit-content;box-sizing:border-box;padding:4px 17px 5px;border-radius:999px;text-align:center;
+  background:linear-gradient(180deg,var(--vidrio2),var(--vidrio));box-shadow:0 4px 14px var(--sombra),0 1px 3px var(--sombra)}
+.tarjeta::before{content:"";position:absolute;z-index:-1;left:6px;right:6px;top:1px;height:46%;border-radius:999px 999px 60% 60%/999px 999px 100% 100%;
+  background:linear-gradient(180deg,var(--brillo),transparent)}
+.tarjeta::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(160deg,var(--b1),var(--b2) 45%,var(--b2) 60%,var(--b1));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.nom{font-size:10px;font-weight:600;letter-spacing:.09em;line-height:12px;white-space:nowrap;color:var(--txt2);text-shadow:var(--ts)}
+.hora{font-size:24px;font-weight:600;line-height:28px;white-space:nowrap;color:var(--th);font-variant-numeric:tabular-nums;text-shadow:var(--ts)}
+.hora span,.nom span{display:inline-block;white-space:pre}
+.hora .c{animation:cam .16s ease-out}
+@keyframes cam{from{opacity:.25;transform:translateY(-35%)}}
+.sonando{animation:parp 1s ease-in-out infinite}
+.sonando{--th:var(--ambar)}
+.sonando .nom,.sonando .hora{color:#1a1000;text-shadow:none}
+@keyframes parp{0%,100%{background:linear-gradient(180deg,#ffc94d,#ffb000);box-shadow:0 0 18px rgba(255,176,0,.75),0 3px 10px var(--sombra)}50%{background:linear-gradient(180deg,var(--vidrio2),var(--vidrio));box-shadow:0 4px 14px var(--sombra)}}
+.sonando .nom,.sonando .hora{animation:parpt 1s ease-in-out infinite}
+@keyframes parpt{50%{color:var(--th)}}
+.perdida{--th:var(--rojo);box-shadow:0 4px 14px var(--sombra),0 0 0 1px rgba(255,90,77,.5)}
+.perdida .nom{color:var(--rojo)}
+@media (prefers-reduced-motion:reduce){.sonando,.sonando .nom,.sonando .hora{animation:none}.sonando{background:linear-gradient(180deg,#ffc94d,#ffb000);box-shadow:0 0 18px rgba(255,176,0,.75)}.hora .c{animation:none}}
+#mas{display:none;margin-top:6px;float:right;color:var(--txt2);font-size:11px;font-weight:600;padding:0 6px;text-shadow:0 0 3px var(--vidrio),0 0 6px var(--vidrio),var(--ts)}
 </style></head>
 <body><div id="lista"></div><div id="mas"></div>
 <script src="tiempo.js"></script>

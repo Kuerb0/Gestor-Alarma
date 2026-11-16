@@ -1,8 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana'];
+const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema'];
 contextBridge.exposeInMainWorld('api', {
   on: (canal, fn) => { if (CANALES.includes(canal)) ipcRenderer.on(canal, (_, d) => fn(d)); },
   abrirCorreo: id => ipcRenderer.send('abrir-correo', id),
+  marcarLeidos: ids => ipcRenderer.send('marcar-leidos', ids),
   abrirOutlook: () => ipcRenderer.send('abrir-outlook'),
   fijar: b => ipcRenderer.send('fijar', !!b),
   actualizar: () => ipcRenderer.send('actualizar'),

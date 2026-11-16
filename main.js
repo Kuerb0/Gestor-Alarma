@@ -1,11 +1,12 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences } = require('electron');
 const fs = require('fs'), path = require('path'), { spawn } = require('child_process');
 const Alarmas = require('./alarmas'); // motor del antiguo Gestor-Alarmas (overlay, datos, Post-It/Outlook)
 
 const HUMO = process.argv.includes('--humo'); // prueba: userData temporal, datos inventados, captura y salir
 const ICONO = path.join(__dirname, 'assets', 'icon.png');
-const W = 400, PW = 380; // ventana (con margen izquierdo para la sombra) y ancho del panel
-let AJUSTES, ajustes = { fijado: false, iniciarConWindows: true, lugar: null }, win, tray;
+const PW = 380; // ancho del panel
+let AJUSTES, ajustes = { fijado: false, iniciarConWindows: true, lugar: null }, win, raya, tray, anim = 0, acento = '#4a9eff';
+nativeTheme.themeSource = HUMO && process.env.PANEL_TEMA === 'light' ? 'light' : 'system'; // el CSS sigue prefers-color-scheme
 let abierto = false, fuera = 0, ultCorreo = 0, leyendoCorreo = false, tSistema = null, bueno = {}, cache = {};
 
 if (HUMO) app.setPath('userData', fs.mkdtempSync(path.join(require('os').tmpdir(), 'panel-humo-')));
@@ -29,10 +30,13 @@ const estado = () => enviar('estado', { abierto, fijado: ajustes.fijado });
 
 // ---- lecturas (si falla, se conserva el último dato bueno y se marca `obsoleto`)
 const conservar = (canal, r) => { if (r && r.ok) bueno[canal] = r; enviar(canal, r && r.ok ? r : bueno[canal] ? { ...bueno[canal], obsoleto: r && r.motivo || 'error' } : r || { ok: false, motivo: 'error' }); };
-async function leerCorreo() { // nunca dos lecturas de Outlook a la vez
-  if (!Correo || leyendoCorreo) return; leyendoCorreo = true;
+let pendienteCorreo = false;
+async function leerCorreo() { // nunca dos lecturas de Outlook a la vez; si llega otra petición con una en curso, se encadena al acabar
+  if (!Correo) return;
+  if (leyendoCorreo) { pendienteCorreo = true; return; }
+  leyendoCorreo = true;
   try { conservar('correo', await Correo.leer()); } catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
-  finally { leyendoCorreo = false; ultCorreo = Date.now(); }
+  finally { leyendoCorreo = false; ultCorreo = Date.now(); if (pendienteCorreo) { pendienteCorreo = false; leerCorreo(); } }
 }
 async function leerMeteo() {
   if (!Meteo) return;
@@ -42,27 +46,57 @@ async function leerMeteo() {
 async function leerSistema() { if (!Sistema) return; try { enviar('sistema', await Sistema.leer()); } catch (e) { log('sistema ' + e.message); } }
 const actualizar = () => { leerCorreo(); leerMeteo(); if (abierto) leerSistema(); };
 
-// ---- ventana: siempre 400 px de ancho y alto completo; escondida es click-through y el HTML desplaza el contenido con CSS
+// ---- ventana: acrílico nativo (cubre toda la ventana), así que escondida se oculta; la «raya» del borde es otra ventanita aparte
 const area = () => screen.getPrimaryDisplay().workArea;
-const colocar = () => { const a = area(); win.setBounds({ x: a.x + a.width - W, y: a.y, width: W, height: a.height }); };
+const xAbierto = () => { const a = area(); return a.x + a.width - PW; };
 function crearVentana() {
+  const a = area();
   win = new BrowserWindow({
-    width: W, height: 800, frame: false, transparent: true, resizable: false, skipTaskbar: true, hasShadow: false, focusable: true, show: false, icon: ICONO,
+    x: a.x + a.width, y: a.y, width: PW, height: a.height, frame: false, backgroundMaterial: 'acrylic', backgroundColor: '#00000000', roundedCorners: false, resizable: false, skipTaskbar: true, focusable: true, show: false, icon: ICONO,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
   });
   win.setAlwaysOnTop(true, 'pop-up-menu');
-  win.setIgnoreMouseEvents(true, { forward: true });
-  colocar();
   win.loadFile('panel.html');
   win.webContents.on('did-finish-load', () => Object.entries(cache).forEach(([c, d]) => win.webContents.send(c, d)));
-  win.once('ready-to-show', () => win.showInactive());
+}
+const rayaUrl = () => 'data:text/html;charset=utf-8,' + encodeURIComponent(`<body style="margin:0;background:transparent;overflow:hidden"><div style="height:100vh;border-radius:2px 0 0 2px;background:${acento};opacity:.6"></div>`);
+function crearRaya() { // 3 px × tercio central del borde derecho: transparente, click-through, sin foco
+  raya = new BrowserWindow({ width: 3, height: 100, frame: false, transparent: true, resizable: false, skipTaskbar: true, focusable: false, hasShadow: false, show: false, thickFrame: false, webPreferences: { sandbox: true, backgroundThrottling: false } });
+  raya.setAlwaysOnTop(true, 'pop-up-menu'); raya.setIgnoreMouseEvents(true);
+  colocar(); raya.loadURL(rayaUrl());
+  raya.once('ready-to-show', () => { if (!abierto) raya.showInactive(); });
+}
+function colocar() {
+  const a = area();
+  if (raya && !raya.isDestroyed()) raya.setBounds({ x: a.x + a.width - 3, y: a.y + Math.round(a.height / 3), width: 3, height: Math.round(a.height / 3) });
+  if (abierto) win.setBounds({ x: xAbierto(), y: a.y, width: PW, height: a.height });
+}
+function deslizar(v) { // setBounds animado ~180 ms, ease-out; una animación nueva anula la anterior
+  const id = ++anim, a = area(), N = 13, fuera = a.x + a.width, x0 = win.isVisible() ? win.getBounds().x : fuera, x1 = v ? xAbierto() : fuera;
+  win.setBounds({ x: x0, y: a.y, width: PW, height: a.height });
+  if (v && !win.isVisible()) win.showInactive();
+  let i = 0;
+  (function paso() {
+    if (id !== anim || win.isDestroyed()) return;
+    i++; const t = 1 - Math.pow(1 - i / N, 3);
+    win.setBounds({ x: Math.round(x0 + (x1 - x0) * t), y: a.y, width: PW, height: a.height });
+    if (i < N) setTimeout(paso, 14); else if (!v) win.hide();
+  })();
 }
 function poner(v) { // abre/cierra de verdad
   if (v === abierto) return; abierto = v; fuera = 0;
-  win.setIgnoreMouseEvents(!v, { forward: true });
+  deslizar(v);
+  if (raya && !raya.isDestroyed()) v ? raya.hide() : raya.showInactive();
   estado();
   clearInterval(tSistema); tSistema = null;
   if (v) { leerSistema(); tSistema = setInterval(leerSistema, 2000); if (!HUMO && Date.now() - ultCorreo > 15e3) leerCorreo(); }
+}
+// tono de Windows: el acento va al panel y al overlay (el claro/oscuro lo resuelve el CSS con prefers-color-scheme)
+function enviarTema() {
+  try { const c = systemPreferences.getAccentColor(); if (/^[0-9a-f]{8}$/i.test(c)) acento = '#' + c.slice(0, 6); } catch {}
+  enviar('tema', { acento });
+  const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) ov.webContents.send('tema', { acento });
+  if (raya && !raya.isDestroyed()) raya.loadURL(rayaUrl());
 }
 const abrir = () => poner(true);
 function cerrar() { ajustes.fijado = false; guardarAjustes(); poner(false); estado(); }
@@ -79,18 +113,35 @@ function alternar() { // Ctrl+Alt+P: abre fijado / cierra
 function sondear() {
   if (HUMO) return;
   const p = screen.getCursorScreenPoint(), a = area(), enY = p.y >= a.y && p.y < a.y + a.height;
-  if (!abierto) { if (enY && p.x >= a.x + a.width - 2) abrir(); return; }
+  if (!abierto) { if (!completa && enY && p.x >= a.x + a.width - 2) abrir(); return; }
   if (ajustes.fijado || (enY && p.x >= a.x + a.width - PW)) { fuera = 0; return; }
   if (!fuera) fuera = Date.now(); else if (Date.now() - fuera >= 700) poner(false);
 }
 
+// ---- pantalla completa (juego, vídeo, presentación): ni la rayita ni las fichas, y el borde no abre el panel (los atajos sí)
+let completa = false, vigia = null;
+function aplicarCompleta() {
+  if (completa && abierto && !ajustes.fijado) poner(false);
+  if (raya && !raya.isDestroyed()) completa || abierto ? raya.hide() : raya.showInactive();
+  const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) completa ? ov.hide() : ov.showInactive();
+}
+function vigilarCompleta() {
+  try {
+    vigia = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'pantalla_completa.ps1')], { windowsHide: true });
+    vigia.stdout.on('data', d => { const v = String(d).trim().split(/\s+/).pop() === '1'; if (v !== completa) { completa = v; log('pantalla completa ' + v); aplicarCompleta(); } });
+    vigia.on('exit', c => { log('vigía de pantalla completa salió ' + c); vigia = null; if (completa) { completa = false; aplicarCompleta(); } });
+  } catch (e) { log('vigía ' + e.message); }
+}
+app.on('will-quit', () => { try { vigia && vigia.kill(); } catch {} });
+
 // ---- inicio con Windows y bandeja
-const LNK = () => path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Panel.lnk');
+const LNK = () => path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Gestor-Alarma.lnk');
 function aplicarInicio() { // acceso directo en la carpeta Inicio (la entrada de Run la omite Windows en este equipo)
   if (HUMO || process.env.PANEL_SIN_INICIO === '1') return;
   try {
     app.setLoginItemSettings({ openAtLogin: false, name: 'Panel', path: process.execPath, args: [__dirname] }); // borra la entrada antigua de Run
-    if (ajustes.iniciarConWindows) shell.writeShortcutLink(LNK(), 'create', { target: process.execPath, args: app.isPackaged ? '' : `"${__dirname}"`, cwd: __dirname, icon: process.execPath });
+    fs.rmSync(path.join(path.dirname(LNK()), 'Panel.lnk'), { force: true }); // acceso directo del nombre anterior
+    if (ajustes.iniciarConWindows) shell.writeShortcutLink(LNK(), 'create', { target: process.execPath, args: app.isPackaged ? '' : `"${__dirname}"`, cwd: __dirname, icon: app.isPackaged ? process.execPath : path.join(__dirname, 'assets', 'icon.ico') });
     else fs.rmSync(LNK(), { force: true });
   } catch (e) { log('inicio ' + e.message); }
 }
@@ -106,13 +157,18 @@ const menu = () => Menu.buildFromTemplate([
 ]);
 function crearBandeja() {
   tray = new Tray(nativeImage.createFromPath(ICONO).resize({ width: 16, height: 16 }));
-  tray.setToolTip('Panel · Ctrl+Alt+P abrir/cerrar · Ctrl+Alt+A nueva alarma · Ctrl+Alt+D descartar');
+  tray.setToolTip('Gestor-Alarma · Ctrl+Alt+P abrir/cerrar · Ctrl+Alt+A nueva alarma · Ctrl+Alt+D descartar');
   tray.setContextMenu(menu());
   tray.on('click', () => abierto ? cerrar() : abrir());
 }
 
 // ---- IPC
 ipcMain.on('abrir-correo', (_, id) => { if (Correo && typeof id === 'string') Promise.resolve(Correo.abrir(id)).catch(e => log('abrir correo ' + e.message)); });
+ipcMain.on('marcar-leidos', (_, ids) => {
+  if (!Array.isArray(ids) || !ids.every(i => typeof i === 'string' && i)) return;
+  if (HUMO) { const c = cache.correo; if (c && c.correos) { c.correos.forEach(x => { if (ids.includes(x.id)) x.leido = true; }); c.noLeidos = c.correos.filter(x => !x.leido).length; enviar('correo', c); } return; }
+  if (Correo) Correo.marcarLeidos(ids).then(r => { if (!r.ok) log('marcar leídos falló'); leerCorreo(); }).catch(e => log('marcar leídos ' + e.message));
+});
 ipcMain.on('abrir-outlook', () => { try { spawn('cmd', ['/c', 'start', '', 'outlook'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref(); } catch (e) { log('outlook ' + e.message); } });
 ipcMain.on('fijar', (_, b) => fijar(b === true));
 ipcMain.on('actualizar', actualizar);
@@ -130,6 +186,7 @@ app.whenReady().then(async () => {
   screen.on('display-metrics-changed', colocar);
   setInterval(sondear, 80);
   if (HUMO) return humo();
+  vigilarCompleta();
   estado(); if (ajustes.fijado) abrir();
   actualizar();
   setInterval(leerCorreo, 6e4); setInterval(leerMeteo, 18e5);
@@ -143,10 +200,20 @@ async function humo() {
   const de = ['Ana García', 'Banco Norte', 'Equipo de Proyectos', 'Luis Pérez', 'GitHub', 'Marta Ruiz', 'Newsletter Semanal', 'Carlos Vega'];
   const as = ['Reunión de mañana: confirmar asistencia y orden del día', 'Resumen de tu cuenta', 'Planificación del trimestre', 'Re: presupuesto', 'Nuevo inicio de sesión', 'Cena del viernes', 'Las novedades de la semana', 'Factura 2026-114'];
   enviar('correo', { ok: true, noLeidos: 3, correos: de.map((x, i) => ({ id: 'c' + i, de: x, asunto: as[i], fecha: iso(ahora - i * 7 * h), leido: i > 2 })),
-    agenda: [{ titulo: 'Reunión de equipo', inicio: iso(h0 + 10 * h), fin: iso(h0 + 11 * h), todoDia: false, lugar: '' }, { titulo: 'Cumpleaños de Marta', inicio: iso(h0), fin: iso(h0 + d), todoDia: true, lugar: '' }, { titulo: 'Dentista', inicio: iso(h0 + d + 10 * h), fin: iso(h0 + d + 11 * h), todoDia: false, lugar: 'Clínica' }] });
+    agenda: [ // 9 eventos en 7 días: hoy 3 (uno de todo el día), mañana 1, +2 vacío, +3 2, +4 1, +5 vacío, +6 2
+      { titulo: 'Cumpleaños de Marta', inicio: iso(h0), fin: iso(h0 + d), todoDia: true, lugar: '' },
+      { titulo: 'Reunión de equipo', inicio: iso(h0 + 0 * d + 10 * h), fin: iso(h0 + 0 * d + 11 * h), todoDia: false, lugar: '', categoria: 'Trabajo', color: '#e5533d' },
+      { titulo: 'Llamada con el banco', inicio: iso(h0 + 0 * d + 17 * h), fin: iso(h0 + 0 * d + 18 * h), todoDia: false, lugar: '' },
+      { titulo: 'Dentista', inicio: iso(h0 + 1 * d + 10 * h), fin: iso(h0 + 1 * d + 11 * h), todoDia: false, lugar: 'Clínica', categoria: 'Salud', color: '#3a86ff' },
+      { titulo: 'Revisión de proyecto', inicio: iso(h0 + 3 * d + 9 * h), fin: iso(h0 + 3 * d + 10.5 * h), todoDia: false, lugar: 'Sala 2', categoria: 'Proyectos', color: '#3fa34d' },
+      { titulo: 'Comida con Luis', inicio: iso(h0 + 3 * d + 13.5 * h), fin: iso(h0 + 3 * d + 15 * h), todoDia: false, lugar: 'Restaurante' },
+      { titulo: 'Entrega de informe', inicio: iso(h0 + 4 * d + 16 * h), fin: iso(h0 + 4 * d + 17 * h), todoDia: false, lugar: '', categoria: 'Urgente', color: '#e5533d' },
+      { titulo: 'Visita al médico', inicio: iso(h0 + 6 * d + 11 * h), fin: iso(h0 + 6 * d + 12 * h), todoDia: false, lugar: 'Centro de salud' },
+      { titulo: 'Cena de cumpleaños', inicio: iso(h0 + 6 * d + 19 * h), fin: iso(h0 + 6 * d + 21 * h), todoDia: false, lugar: 'Casa de Ana' }] });
   const nd = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes'], ic = ['☀️', '⛅', '🌧️', '☁️', '🌤️'];
-  enviar('meteo', { ok: true, lugar: { nombre: 'Madrid', lat: 40.4, lon: -3.7 }, actual: { temp: 18, codigo: 1, texto: 'Mayormente despejado', icono: '🌤️', viento: 14 },
-    horas: Array.from({ length: 12 }, (_, i) => ({ hora: iso(ahora + i * h).slice(0, 14) + '00', temp: 14 + (i % 6), icono: ic[i % 5], lluvia: (i * 7) % 60 })),
+  enviar('meteo', { ok: true, lugar: { nombre: 'Madrid', lat: 40.4, lon: -3.7, categoria: 'Personal', color: '#a06bff' }, actual: { temp: 18, codigo: 1, texto: 'Mayormente despejado', icono: '🌤️', viento: 14 },
+    horas: Array.from({ length: 24 }, (_, i) => ({ hora: String(i).padStart(2, '0') + ':00', temp: Math.round(13 + 6 * Math.cos((i - 15) / 24 * 2 * Math.PI)), icono: ic[(i / 3 | 0) % 5], lluvia: (i * 7) % 60 })),
+    ahora: new Date().getHours() + new Date().getMinutes() / 60,
     dias: nd.map((n, i) => ({ fecha: iso(ahora + i * d).slice(0, 10), nombre: n, max: 20 + i, min: 9 + i, icono: ic[i], texto: '', lluvia: i * 15 })) });
   Alarmas.datosHumo();
   enviar('sistema', { cpu: 23, ramUsada: 9.5e9, ramTotal: 16e9, discoLibre: 180e9, discoTotal: 500e9 });
@@ -155,20 +222,21 @@ async function humo() {
   const salida = path.join(require('os').tmpdir(), 'panel-humo'); fs.mkdirSync(salida, { recursive: true });
   const js = (w, c) => w.webContents.executeJavaScript(c), esp = ms => new Promise(r => setTimeout(r, ms));
   const captura = async (n, w) => { try { fs.writeFileSync(path.join(salida, n + '.png'), (await w.webContents.capturePage()).toPNG()); } catch (e) { fallos.push('captura ' + n + ': ' + e.message); } };
-  for (const t of ['alarmas', 'correo', 'agenda', 'tiempo', 'sistema']) {
+  for (const tema of ['', '-claro']) for (const t of ['alarmas', 'correo', 'agenda', 'tiempo', 'sistema']) {
+    if (tema && t === 'alarmas') { nativeTheme.themeSource = 'light'; await esp(400); }
     if (!await js(win, `(b => b ? (b.click(), true) : false)(document.querySelector('button[data-tab="${t}"]'))`)) { fallos.push('falta el botón de la pestaña ' + t); continue; }
-    if (t === 'alarmas') { // el botón de sincronizar responde (en humo, sin leer nada real)
+    if (t === 'alarmas' && !tema) { // el botón de sincronizar responde (en humo, sin leer nada real)
       await js(win, `document.getElementById('al-refrescar')?.click()`); await esp(500);
       const est = await js(win, `document.getElementById('al-estado')?.textContent || ''`);
       if (!/humo/.test(est)) fallos.push('botón sincronizar: ' + est);
       const vd = await js(win, `document.getElementById('al-ventana')?.value`);
       if (vd !== '14') fallos.push('ventana en días: ' + vd + ' (esperada 14)');
     }
-    await esp(300); await captura('panel-' + t, win);
+    await esp(700); await captura('panel-' + t + tema, win); // 700: deja acabar la gota de la pestaña
   }
   await captura('overlay', Alarmas.overlay());
   const n = (w, s) => js(w, `document.querySelectorAll('${s}').length`);
-  for (const [s, esperadas] of [['.fila', 12], ['.fila-correo', 8], ['.evento', 3]]) { const v = await n(win, s); if (v !== esperadas) fallos.push(`${s}: ${v} (esperadas ${esperadas})`); }
+  for (const [s, esperadas] of [['.fila', 12], ['.fila-correo', 8], ['.evento', 9]]) { const v = await n(win, s); if (v !== esperadas) fallos.push(`${s}: ${v} (esperadas ${esperadas})`); }
   const tarjetas = await n(Alarmas.overlay(), '.tarjeta');
   if (tarjetas !== 5) fallos.push('tarjetas visibles: ' + tarjetas + ' (esperadas 5)');
   console.log(fallos.length ? 'HUMO FALLA\n' + fallos.join('\n') : 'HUMO OK · capturas en ' + salida);

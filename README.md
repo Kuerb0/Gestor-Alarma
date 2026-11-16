@@ -1,6 +1,6 @@
-# Panel
+# Gestor-Alarma
 
-Panel lateral para Windows (Electron), fijo al **borde derecho** del monitor principal y a altura completa. Escondido solo se ve una rayita azul de 3 px; al llevar el ratón al borde derecho se despliega deslizándose, y se esconde 700 ms después de sacar el ratón.
+Gestor-Alarma: panel lateral para Windows (Electron), fijo al **borde derecho** del monitor principal y a altura completa. Escondido solo se ve una rayita azul de 3 px; al llevar el ratón al borde derecho se despliega deslizándose, y se esconde 700 ms después de sacar el ratón.
 
 **Cómo se abre**
 - Ratón al borde derecho de la pantalla (en cualquier altura).
@@ -53,3 +53,5 @@ La lista de la pestaña permite **Editar** y **Borrar**.
 - `npm install`, `npm start`.
 - `npm test`: fuentes, `tiempo.js`, `puente.js` y `outlook_salida.js`. `npm run humo`: abre el panel y el overlay con datos inventados, recorre las pestañas, guarda capturas en `%TEMP%\panel-humo` (`panel-<pestaña>.png`, `overlay.png`) y comprueba el DOM (`HUMO OK`).
 - Empaquetado: `python C:\Github\herramientas-apps\construir.py exe` (usa `app.json`).
+
+**Icono:** `assets/icon.png` y `assets/icon.ico` se generan con `python herramientas/icono.py assets` (campana de cristal; necesita Pillow).

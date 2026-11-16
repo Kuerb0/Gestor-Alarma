@@ -18,6 +18,7 @@ const TABS = [...document.querySelectorAll('[role=tab]')], NOMBRES = TABS.map(t 
 function ir(n, foco = true) {
   if (!NOMBRES.includes(n)) n = 'alarmas';
   TABS.forEach(t => { const on = t.dataset.tab === n; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; $('p-' + t.dataset.tab).hidden = !on; });
+  $('tabs').style.setProperty('--i', NOMBRES.indexOf(n));
   try { localStorage.setItem('pestana', n); } catch {}
   if (n === 'alarmas' && foco) $('al-rapido').focus();
 }
@@ -37,13 +38,44 @@ document.addEventListener('keydown', e => { // Esc: vacía el campo con texto de
 
 
 // ---- tiempo
-function pintaMeteo(r) {
-  const t = $('tiempo');
+const W = 340, PX = 16, IY = 17, GT = 58, GB = 112, BY = 126, GH = 150; // ancho del gráfico (viewBox; se escala al ancho útil), margen lateral, y de iconos / máx / mín / base de la lluvia, alto
+const xh = h => PX + h / 24 * (W - 2 * PX), clamp = (y, a, b) => Math.max(a, Math.min(b, y));
+let meteo = null, meteoT = 0;
+function curva(p) { // spline Catmull-Rom -> Béziers, sin salirse de la franja de la curva
+  const q = i => p[Math.max(0, Math.min(p.length - 1, i))], c = y => clamp(y, GT, GB).toFixed(1);
+  let d = `M${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
+  for (let i = 0; i < p.length - 1; i++) {
+    const a = q(i - 1), b = q(i), e = q(i + 1), f = q(i + 2);
+    d += `C${(b[0] + (e[0] - a[0]) / 6).toFixed(1)} ${c(b[1] + (e[1] - a[1]) / 6)} ${(e[0] - (f[0] - b[0]) / 6).toFixed(1)} ${c(e[1] - (f[1] - b[1]) / 6)} ${e[0].toFixed(1)} ${e[1].toFixed(1)}`;
+  }
+  return d;
+}
+// Gráfico del día (0–24 h, sin scroll). `ah` = hora decimal de ahora; `ta` = temperatura actual.
+function franja(horas, ah, ta) {
+  const n = horas.length, T = horas.map(h => Math.round(h.temp)), mx = Math.max(...T), mn = Math.min(...T), im = T.indexOf(mx), ii = T.indexOf(mn);
+  const yt = v => GB - (mx === mn ? .5 : clamp((v - mn) / (mx - mn), 0, 1)) * (GB - GT);
+  const p = T.map((v, i) => [xh(i), yt(v)]), c = curva(p), xa = xh(ah), ya = yt(ta);
+  const fin = `L${p[n - 1][0].toFixed(1)} ${BY}L${p[0][0].toFixed(1)} ${BY}Z`;
+  const grupo = cl => `<g clip-path="url(#${cl})"><path class="fr-a" d="${c}${fin}"/><path class="fr-l" d="${c}"/></g>`;
+  const marcas = new Set(mx === mn ? [] : [im, ii]); // temperaturas con texto: máx/mín y cada 3 h, sin pisar la de ahora ni las marcadas
+  const lbl = [...marcas].map(i => [i, 1]).concat(Array.from({ length: n }, (_, i) => i).filter(i => i % 3 === 0 && ![...marcas].some(m => Math.abs(m - i) < 2)).map(i => [i, 0]));
+  const textos = lbl.filter(([i]) => Math.abs(i - ah) >= 2).map(([i, k]) => `<circle class="${k ? 'fr-k' : 'fr-p'}" cx="${p[i][0].toFixed(1)}" cy="${p[i][1].toFixed(1)}" r="${k ? 3.5 : 2}"/><text class="fr-t${k ? ' k' : ''}${i < ah ? ' pas' : ''}" x="${p[i][0].toFixed(1)}" y="${(p[i][1] - 8).toFixed(1)}">${T[i]}°</text>`).join('');
+  const iconos = horas.map((h, i) => i % 3 ? '' : `<text class="fr-i${i < ah ? ' pas' : ''}" x="${xh(i).toFixed(1)}" y="${IY}">${esc(h.icono)}</text>`).join('');
+  const eje = Array.from({ length: 8 }, (_, k) => `<text class="fr-h${k * 3 < ah ? ' pas' : ''}" x="${xh(k * 3).toFixed(1)}" y="${GH - 4}">${k * 3}h</text>`).join('');
+  const lluvia = horas.map((h, i) => h.lluvia > 0 ? `<rect class="fr-ll${i < ah ? ' pas' : ''}" x="${(xh(i) - 1.25).toFixed(1)}" y="${(BY - Math.max(2, h.lluvia * .14)).toFixed(1)}" width="2.5" height="${Math.max(2, h.lluvia * .14).toFixed(1)}" rx="1.25"/>` : '').join('');
+  return `<div class="franja"><svg class="fr-g" viewBox="0 0 ${W} ${GH}" role="img" aria-label="Temperatura de hoy, de ${mn}° a ${mx}°, ahora ${Math.round(ta)}°">
+    <defs><linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop class="g1" offset="0"/><stop class="g2" offset="1"/></linearGradient>
+      <clipPath id="cp"><rect x="0" y="0" width="${xa.toFixed(1)}" height="${GH}"/></clipPath><clipPath id="cf"><rect x="${xa.toFixed(1)}" y="0" width="${W}" height="${GH}"/></clipPath></defs>
+    <g class="pas">${grupo('cp')}</g>${grupo('cf')}<line class="fr-e" x1="${PX}" y1="${BY}" x2="${W - PX}" y2="${BY}"/>${lluvia}${iconos}${textos}
+    <line class="fr-ya" x1="${xa.toFixed(1)}" y1="${IY + 8}" x2="${xa.toFixed(1)}" y2="${BY}"/><circle class="fr-k" cx="${xa.toFixed(1)}" cy="${ya.toFixed(1)}" r="4.5"/>
+    <text class="fr-t k" x="${clamp(xa, 14, W - 14).toFixed(1)}" y="${(ya - 10).toFixed(1)}">${Math.round(ta)}°</text>${eje}</svg></div>`;
+}
+function pintaMeteo() {
+  const r = meteo, t = $('tiempo');
   if (!r || !r.ok) { t.innerHTML = '<div class="vacio">Tiempo no disponible</div>'; return; }
-  const a = r.actual;
-  t.innerHTML = `<div class="ahora"><div class="ic">${esc(a.icono)}</div><div class="t">${Math.round(a.temp)}°</div>
+  const a = r.actual, hs = (r.horas || []).slice(0, 24), ah = clamp((Number.isFinite(r.ahora) ? r.ahora : new Date().getHours() + new Date().getMinutes() / 60) + (Date.now() - meteoT) / 36e5, 0, 24);
+  t.innerHTML = (hs.length > 1 ? franja(hs, ah, a.temp) : '') + `<div class="ahora"><div class="ic">${esc(a.icono)}</div><div class="t">${Math.round(a.temp)}°</div>
     <div class="x"><b>${esc(a.texto)}</b><br>${esc(r.lugar.nombre)} · viento ${Math.round(a.viento)} km/h</div></div>
-    <div class="horas">${r.horas.slice(0, 12).map(h => `<div>${esc(String(h.hora).slice(11, 16))}<span class="ic">${esc(h.icono)}</span><span>${Math.round(h.temp)}°</span><span class="ll">${h.lluvia ? Math.round(h.lluvia) + '%' : '&nbsp;'}</span></div>`).join('')}</div>
     <div class="dias">${r.dias.slice(0, 5).map(d => `<div>${esc(String(d.nombre).slice(0, 3))}<span class="ic">${esc(d.icono)}</span><span>${Math.round(d.max)}° <small>${Math.round(d.min)}°</small></span><span class="ll">${Math.round(d.lluvia || 0)}%</span></div>`).join('')}</div>`;
 }
 
@@ -65,21 +97,61 @@ function pintaCorreo(r) {
     const b = $('ab'); if (b) b.onclick = () => api.abrirOutlook();
   } else {
     chip.hidden = !r.noLeidos; chip.textContent = r.noLeidos;
-    c.innerHTML = r.correos.length ? r.correos.map(m => `<div class="fila-correo${m.leido ? '' : ' nl'}" data-id="${esc(m.id)}" title="${esc(m.asunto)}"><span class="p"></span><span class="de">${esc(m.de)}</span><span class="h">${fechaCorta(m.fecha)}</span><span class="as">${esc(m.asunto)}</span></div>`).join('') : '<div class="vacio">Sin correos</div>';
+    c.innerHTML = r.correos.length ? r.correos.map(m => `<div class="fila-correo${m.leido ? '' : ' nl'}" data-id="${esc(m.id)}" title="${esc(m.asunto)}" tabindex="0" aria-selected="false"><span class="p"></span><button class="chk" tabindex="-1" role="checkbox" aria-checked="false" aria-label="Seleccionar">${SVG_OK}</button><span class="de">${esc(m.de)}</span>${m.leido ? '' : `<button class="leer" tabindex="-1" title="Marcar como leído" aria-label="Marcar como leído">${SVG_SOBRE}</button>`}<span class="h">${fechaCorta(m.fecha)}</span><span class="as">${esc(m.asunto)}</span></div>`).join('') : '<div class="vacio">Sin correos</div>';
   }
+  sel = new Set([...sel].filter(id => correo && correo.ok && correo.correos.some(m => m.id === id))); sel.size || (ancla = -1); marcaSel();
   pintaAgenda();
 }
-$('correo').onclick = e => { const f = e.target.closest('.fila-correo'); if (f) api.abrirCorreo(f.dataset.id); };
+// selección múltiple: Ctrl+clic alterna, Mayús+clic rango, Espacio alterna en la fila enfocada
+const SVG_OK = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+const SVG_SOBRE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.5L12 4l8.5 5.5V19a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 9.5L12 15l8.5-5.5"/></svg>';
+let sel = new Set(), ancla = -1;
+const filas = () => [...document.querySelectorAll('#correo .fila-correo')];
+function marcaSel() {
+  $('correo').classList.toggle('sel', sel.size > 0);
+  filas().forEach(f => { const on = sel.has(f.dataset.id); f.classList.toggle('marcada', on); f.setAttribute('aria-selected', on); f.querySelector('.chk').setAttribute('aria-checked', on); });
+  $('cbarra').hidden = !sel.size; $('cn').textContent = sel.size + (sel.size === 1 ? ' seleccionado' : ' seleccionados');
+  $('c-todo').hidden = sel.size >= filas().length;
+}
+function alterna(f, rango) {
+  const fs = filas(), i = fs.indexOf(f);
+  if (rango && ancla >= 0) { const [a, b] = [Math.min(ancla, i), Math.max(ancla, i)]; fs.slice(a, b + 1).forEach(x => sel.add(x.dataset.id)); }
+  else { sel.has(f.dataset.id) ? sel.delete(f.dataset.id) : sel.add(f.dataset.id); ancla = i; }
+  marcaSel();
+}
+function leer(ids) { // optimista: quita negrita/punto, baja el contador y avisa a Outlook
+  if (!correo || !correo.ok || !ids.length) return;
+  const nuevos = correo.correos.filter(m => ids.includes(m.id) && !m.leido);
+  nuevos.forEach(m => m.leido = true);
+  filas().filter(f => ids.includes(f.dataset.id)).forEach(f => { f.classList.remove('nl'); const b = f.querySelector('.leer'); if (b) b.remove(); });
+  correo.noLeidos = Math.max(0, correo.noLeidos - nuevos.length); $('chip').hidden = !correo.noLeidos; $('chip').textContent = correo.noLeidos;
+  api.marcarLeidos && api.marcarLeidos(ids);
+}
+$('correo').onclick = e => {
+  const f = e.target.closest('.fila-correo'); if (!f) return;
+  if (e.target.closest('.leer')) return leer([f.dataset.id]);
+  if (e.target.closest('.chk')) return alterna(f, e.shiftKey);
+  if (e.ctrlKey || e.metaKey || e.shiftKey || sel.size) alterna(f, e.shiftKey); else api.abrirCorreo(f.dataset.id);
+};
+$('correo').addEventListener('keydown', e => {
+  const f = e.target.closest && e.target.closest('.fila-correo'); if (!f || e.target !== f) return;
+  if (e.key === ' ') { e.preventDefault(); alterna(f, e.shiftKey); } else if (e.key === 'Enter') api.abrirCorreo(f.dataset.id);
+});
+$('c-leer').onclick = () => { leer([...sel]); sel.clear(); ancla = -1; marcaSel(); };
+$('c-todo').onclick = () => { filas().forEach(f => sel.add(f.dataset.id)); marcaSel(); };
+$('c-nada').onclick = () => { sel.clear(); ancla = -1; marcaSel(); };
 
 // ---- agenda
 function pintaAgenda() {
-  const h = dia0(new Date()), eventos = correo && correo.ok ? correo.agenda : [];
-  const dia = (nombre, d) => {
-    const i = d.getTime(), f = i + 864e5;
-    const ev = eventos.filter(e => { const a = new Date(e.inicio).getTime(), b = new Date(e.fin || e.inicio).getTime(); return a < f && Math.max(b, a + 1) > i; }).sort((x, y) => new Date(x.inicio) - new Date(y.inicio));
-    return `<div class="diah">${nombre}</div>` + (ev.length ? ev.map(e => `<div class="evento"><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + '–' + hhmm(new Date(e.fin))}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}</span></div>`).join('') : '<div class="vacio">Sin eventos</div>');
+  const h = dia0(new Date()), eventos = correo && correo.ok ? correo.agenda || [] : [];
+  const nombre = (d, i) => i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }).replace(/^./, c => c.toUpperCase());
+  const dia = i => {
+    const d = new Date(h.getFullYear(), h.getMonth(), h.getDate() + i), ini = d.getTime(), f = new Date(h.getFullYear(), h.getMonth(), h.getDate() + i + 1).getTime();
+    const ev = eventos.filter(e => { const a = new Date(e.inicio).getTime(), b = new Date(e.fin || e.inicio).getTime(); return a < f && Math.max(b, a + 1) > ini; }).sort((x, y) => new Date(x.inicio) - new Date(y.inicio));
+    return `<div class="diah">${nombre(d, i)}</div>` + (ev.length ? ev.map(e => `<div class="evento"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}</div>`).join('') : '<div class="vacio">Sin eventos</div>');
   };
-  $('agenda').innerHTML = '<h2>Agenda</h2>' + dia('Hoy', h) + dia('Mañana', new Date(h.getFullYear(), h.getMonth(), h.getDate() + 1));
+  $('agenda').innerHTML = '<h2>Agenda · 7 días</h2>' + Array.from({ length: 7 }, (_, i) => dia(i)).join('');
+  $('agenda').querySelectorAll('.evento[data-c]').forEach(el => el.style.setProperty('--c', el.dataset.c)); // CSP: sin style inline en el HTML
 }
 
 // ---- sistema
@@ -100,10 +172,12 @@ if (navigator.getBattery) navigator.getBattery().then(b => { bateria = b; b.onle
 
 // ---- IPC
 api.on('correo', pintaCorreo);
-api.on('meteo', pintaMeteo);
+api.on('meteo', r => { meteo = r; meteoT = Date.now(); pintaMeteo(); });
 api.on('pestana', n => ir(n));
+api.on('tema', t => t && /^#[0-9a-f]{6}$/i.test(t.acento) && document.documentElement.style.setProperty('--acento', t.acento));
 api.on('sistema', s => { sis = s; pintaSistema(); });
-api.on('estado', e => { document.body.classList.toggle('abierto', e.abierto); $('pin').classList.toggle('on', e.fijado); if (e.abierto) reloj(); });
+api.on('estado', e => { document.body.classList.toggle('abierto', e.abierto); $('pin').classList.toggle('on', e.fijado); $('pin').setAttribute('aria-pressed', !!e.fijado); if (e.abierto) reloj(); });
 reloj(); pintaAgenda();
 setInterval(reloj, 1000);
 setInterval(pintaAgenda, 6e4);
+setInterval(pintaMeteo, 6e4); // la rayita de ahora avanza sola
