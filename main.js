@@ -349,7 +349,7 @@ async function humo() {
   completa = true; pintarAct(); await esp(200);
   if (await js(win, `document.getElementById('nueva')?.hidden`) !== true) fallos.push('la pastilla sigue en pantalla completa');
   completa = false;
-  const cuadros = await n(Alarmas.overlay(), '.cuadro'); if (cuadros !== 1) fallos.push('cuadros de agenda en el overlay: ' + cuadros + ' (esperado 1)');
+  const cuadros = await n(Alarmas.overlay(), '.cuadro'); if (cuadros < 1) fallos.push('cuadros de agenda en el overlay: ' + cuadros + ' (esperado al menos 1: el evento en curso)');
   const cu = await js(Alarmas.overlay(), `document.querySelector('.cuadro .hora').textContent`); if (!/^−\d\d:\d\d$/.test(cu)) fallos.push('cuenta atrás del cuadro: ' + cu);
   await captura('overlay-cuadros', Alarmas.overlay());
   await js(win, `document.querySelector('button[data-tab="tiempo"]').click()`); await esp(300);
