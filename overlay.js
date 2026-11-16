@@ -47,7 +47,8 @@ function pintar() {
       els.set(a.id, e);
     }
     const f = Tiempo.fase(a, ahora);
-    const cls = 'tarjeta ' + (f.fase === 'sonando' ? 'sonando' : f.fase === 'perdida' ? 'perdida' : '');
+    const cls = 'tarjeta ' + (f.fase === 'sonando' ? 'sonando' : f.fase === 'perdida' ? 'perdida' : '') + (/^#[0-9a-f]{6}$/i.test(a.color) ? ' c' : '');
+    if (a.color && e.style.getPropertyValue('--nc') !== a.color) e.style.setProperty('--nc', a.color); // nombre con el color de su etiqueta
     if (e.className !== cls) e.className = cls;
     dibujar(e.querySelector('.nom'), a.nombre.toUpperCase().slice(0, NOMBRE_MAX));
     dibujar(e.querySelector('.hora'), f.fase === 'perdida' ? 'PERDIDA' : f.fase === 'sonando' && f.ms === undefined ? '00:00' : Tiempo.formatear(f.ms, a.tipo === 'crono', formato));

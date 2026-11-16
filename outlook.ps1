@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 
 # enum OlCategoryColor (1..25), igual que Post-It-App
-$paleta = @{1='#e5533d';2='#f08c2e';3='#f4b183';4='#e0c341';5='#3fa34d';6='#2ec4a6';7='#8a9a3b';8='#3a86ff';9='#a06bff';10='#a04a5e';11='#8a8a90';12='#5a5a62';13='#9a9aa0';14='#6a6a70';15='#4a4a4e';16='#a83228';17='#c06a1e';18='#d09a6a';19='#b09a20';20='#2a7a34';21='#1e8a76';22='#6a7a2b';23='#2a5ecc';24='#7a4ac0';25='#7a3444'}
+$paleta = @{1='#e5533d';2='#f08c2e';3='#f4b183';4='#e0c341';5='#3fa34d';6='#2ec4a6';7='#8a9a3b';8='#3a86ff';9='#a06bff';10='#e5609c';11='#8a8a90';12='#5a5a62';13='#9a9aa0';14='#6a6a70';15='#4a4a4e';16='#a83228';17='#c06a1e';18='#d09a6a';19='#b09a20';20='#2a7a34';21='#1e8a76';22='#6a7a2b';23='#2a5ecc';24='#7a4ac0';25='#7a3444'}
 
 try { $ol = [Runtime.InteropServices.Marshal]::GetActiveObject('Outlook.Application') }
 catch {

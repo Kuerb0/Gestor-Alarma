@@ -125,12 +125,13 @@ ipcMain.handle('sync:ventana', async (_, d) => {
 ipcMain.handle('ajustes:formato', () => ajustes.formato === 'completo' ? 'completo' : 'adaptativo');
 ipcMain.handle('alarmas:crear', (_, r) => {
   const v = T.validar(r, Date.now()); if (!v.ok) return v;
-  alarmas.push({ id: crypto.randomUUID(), creada: Date.now(), ...v.rec }); guardar(); exportarOutlook(); return ok();
+  const color = r && /^#[0-9a-f]{6}$/i.test(r.color) ? r.color : undefined; // color de la etiqueta de Outlook (alarmas puestas desde la Agenda)
+  alarmas.push({ id: crypto.randomUUID(), creada: Date.now(), ...v.rec, ...(color && { color }) }); guardar(); exportarOutlook(); return ok();
 });
 ipcMain.handle('alarmas:editar', (_, id, r) => {
   const i = alarmas.findIndex(a => a.id === id); if (i < 0) return { ok: false, error: 'Ya no existe' };
   const v = T.validar(r, Date.now()); if (!v.ok) return v;
-  const ant = alarmas[i], nueva = { id, creada: Date.now(), ...v.rec };
+  const ant = alarmas[i], nueva = { id, creada: Date.now(), ...v.rec, ...(ant.color && { color: ant.color }) };
   if (ant.outlookId) { if (nueva.tipo === 'fecha') { nueva.outlookId = ant.outlookId; nueva.outlookHuella = ant.outlookHuella; } else borrarEnOutlook(ant.outlookId); }
   alarmas[i] = nueva; guardar(); exportarOutlook(); return ok();
 });

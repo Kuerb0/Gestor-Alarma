@@ -67,6 +67,7 @@
     ord.forEach(a => {
       const f = el('div', 'fila'), n = el('span', 'n', a.nombre), t = el('span', 't'), s = el('small', '', a.tipo === 'crono' ? '▲' : a.tipo === 'fecha' ? hm(a.objetivo) : a.tipo === 'recurrente' ? '↻ ' + Tiempo.etiquetaDias(a.dias) + ' ' + p2(a.hh) + ':' + p2(a.mm) : '▼');
       f.dataset.id = a.id; n.title = s.textContent; n.append(' ', s);
+      if (/^#[0-9a-f]{6}$/i.test(a.color)) { n.classList.add('c'); n.style.setProperty('--c', a.color); } // color de su etiqueta de Outlook
       if (a.origen) { f.classList.add('ext'); f.append(n, t, el('small', '', a.origen === 'outlook' ? 'Outlook' : 'Post-It')); } // traídas de fuera: solo lectura
       else {
         const be = el('button', 'btn-sec', 'Editar'), bb = el('button', 'btn-sec', 'Borrar');

@@ -192,3 +192,4 @@ select.campo option { background: #2b2f38; color: #fff; }
 #ev-form .btn-txt { margin-top: 0; height: 30px; } #ev-form .btn-txt:disabled { opacity: .6; cursor: default; }
 #ev-aviso { margin: 0 0 6px; padding: 6px 12px; border-radius: 12px; font-size: 12px; background: var(--ac-v); }
 #ev-chips { max-height: 98px; overflow-y: auto; padding: 2px; } /* con muchas categorías de Outlook, ~3 filas y scroll */
+.fila .n.c { color: var(--c); font-weight: 600; } /* alarma puesta desde un evento: color de su etiqueta de Outlook */

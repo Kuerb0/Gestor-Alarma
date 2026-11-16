@@ -152,7 +152,7 @@ async function evAlarma(el) { // alterna la alarma del Gestor de este evento
   const a = alarmaDe(el), ms = +el.dataset.ms;
   if (a) { await window.alarmas.borrar(a.id); return evAviso('Alarma quitada'); }
   if (ms <= Date.now()) return evAviso('Ya ha pasado');
-  const g = await window.alarmas.crear({ nombre: tituloEv(el), tipo: 'fecha', objetivo: ms });
+  const g = await window.alarmas.crear({ nombre: tituloEv(el), tipo: 'fecha', objetivo: ms, ...(el.dataset.c && { color: el.dataset.c }) });
   if (!g.ok) return evAviso(g.error);
   const d = new Date(ms);
   evAviso('Alarma puesta ' + (dia0(d).getTime() === dia0(new Date()).getTime() ? '' : 'el ' + evFecha(d) + ' ') + 'a las ' + hhmm(d));
