@@ -27,8 +27,8 @@ const Correo = HUMO ? null : cargar('correo'), Meteo = HUMO ? null : cargar('met
 
 const guardarAjustes = () => { try { fs.writeFileSync(AJUSTES, JSON.stringify(ajustes)); } catch (e) { log('ajustes ' + e.message); } };
 const enviar = (canal, dato) => { cache[canal] = dato; win && !win.isDestroyed() && win.webContents.send(canal, dato); if (canal === 'correo') agendaAlOverlay(); };
-// eventos con hora y fin (los de todo el día no «pasan»): el overlay pinta como cuadrado el que está en curso
-const eventosOverlay = () => ((cache.correo && cache.correo.agenda) || []).filter(e => !e.todoDia && e.fin).map(e => ({ titulo: e.titulo, inicio: e.inicio, fin: e.fin, color: e.color }));
+// agenda para el overlay: pinta como rectángulo el evento en curso (con hora) y colorea las alarmas
+const eventosOverlay = () => ((cache.correo && cache.correo.agenda) || []).map(e => ({ titulo: e.titulo, inicio: e.inicio, fin: e.fin, todoDia: e.todoDia, color: e.color })); // también los de todo el día: dan color a las alarmas del mismo nombre
 function agendaAlOverlay() { const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) ov.webContents.send('agenda', eventosOverlay()); }
 ipcMain.handle('agenda:lista', eventosOverlay);
 const estado = () => enviar('estado', { abierto, fijado: ajustes.fijado });
@@ -40,7 +40,7 @@ async function leerCorreo() { // nunca dos lecturas de Outlook a la vez; si lleg
   if (!Correo) return;
   if (leyendoCorreo) { pendienteCorreo = true; return; }
   leyendoCorreo = true;
-  try { conservar('correo', await Correo.leer({ dias: diasAgenda })); } catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
+  try { const r = await Correo.leer({ dias: Math.max(diasAgenda, 14) }); conservar('correo', r.ok ? { ...r, dias: diasAgenda } : r); } // se leen ≥14 días (el overlay colorea alarmas lejanas); la pestaña pinta solo `dias` catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
   finally { leyendoCorreo = false; ultCorreo = Date.now(); if (pendienteCorreo) { pendienteCorreo = false; leerCorreo(); } }
 }
 async function leerMeteo() {

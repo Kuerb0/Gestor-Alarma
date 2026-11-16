@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const T = require('./tiempo'), Puente = require('./puente'), Salida = require('./outlook_salida');
 
 const ICONO = path.join(__dirname, 'assets', 'icon.png');
-const W = 260, H = 430; // el overlay es transparente y click-through: tener más espacio del necesario no estorba
+const W = 260, H = 480; // el overlay es transparente y click-through: tener más espacio del necesario no estorba
 let app, log, HUMO, ventanas = () => [], alAbrir = () => {};
 let DIR, DATOS, AJUSTES, alarmas = [], externas = [], descartadasExt = new Set(), sincronizando = false, promesaSync = null, ultimoSync = null, exportando = false, pendientesBorrar = [], proximoIntentoOutlook = 0, categorias = {}, ajustes = { formato: 'adaptativo', ventanaDias: 14, calendarioOutlook: '' }, overlay;
 

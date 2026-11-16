@@ -38,8 +38,8 @@ function pintar() {
   const ahora = Date.now();
   const ord = Tiempo.ordenar(datos.filter(a => Tiempo.fase(a, ahora).fase !== 'fin'), ahora), vis = ord.slice(0, MAX);
   for (const [id, e] of els) if (!vis.some(a => a.id === id)) { e.remove(); els.delete(id); }
-  let suena = false;
-  vis.forEach((a, i) => {
+  let suena = false; const todos = []; // alarmas y eventos juntos, ordenados por lo que falta
+  vis.forEach(a => {
     let e = els.get(a.id);
     if (!e) {
       e = document.createElement('div');
@@ -47,8 +47,9 @@ function pintar() {
       els.set(a.id, e);
     }
     const f = Tiempo.fase(a, ahora);
-    const cls = 'tarjeta ' + (f.fase === 'sonando' ? 'sonando' : f.fase === 'perdida' ? 'perdida' : '') + (/^#[0-9a-f]{6}$/i.test(a.color) ? ' c' : '');
-    if (a.color && e.style.getPropertyValue('--nc') !== a.color) e.style.setProperty('--nc', a.color); // nombre con el color de su etiqueta
+    const col = a.color || colorAgenda(a), hayCol = COL.test(col);
+    const cls = 'tarjeta ' + (f.fase === 'sonando' ? 'sonando' : f.fase === 'perdida' ? 'perdida' : '') + (hayCol ? ' c' : '');
+    if (hayCol && e.style.getPropertyValue('--nc') !== col) e.style.setProperty('--nc', col); // borde y nombre con el color de su etiqueta
     if (e.className !== cls) e.className = cls;
     dibujar(e.querySelector('.nom'), a.nombre.toUpperCase().slice(0, NOMBRE_MAX));
     dibujar(e.querySelector('.hora'), f.fase === 'perdida' ? 'PERDIDA' : f.fase === 'sonando' && f.ms === undefined ? '00:00' : Tiempo.formatear(f.ms, a.tipo === 'crono', formato));
@@ -57,21 +58,29 @@ function pintar() {
     else e.style.removeProperty('--th');
     e.title = a.nombre + (a.tipo === 'crono' ? '' : ' · ' + hm(a.objetivo));
     if (f.suena && !a.silencioso) suena = true; // las de Post-It solo se ven: ya suenan en Post-It
-    if (lista.children[i] !== e) lista.insertBefore(e, lista.children[i] || null);
+    todos.push({ e, p: f.fase === 'sonando' ? 0 : f.fase === 'perdida' ? 1 : a.tipo === 'crono' ? 3 : 2, v: f.fase === 'activa' ? (a.tipo === 'crono' ? -a.inicio : f.ms) : a.objetivo });
   });
   const resto = ord.length - vis.length;
   mas.style.display = resto ? 'block' : 'none'; mas.textContent = '+' + resto + ' más';
-  pintarAgenda(ahora);
+  todos.push(...pintarAgenda(ahora));
+  todos.sort((x, y) => x.p - y.p || x.v - y.v).forEach((x, n) => { if (lista.children[n] !== x.e) lista.insertBefore(x.e, lista.children[n] || null); });
   if (suena && ahora - ultimoPitido >= 1000) { ultimoPitido = ahora; pitido(); }
 }
+// Color de una alarma sin color propio (las de Outlook y las creadas aquí): el del evento de la agenda con su nombre y hora; si no, el de otro evento del mismo nombre ese día
+const COL = /^#[0-9a-f]{6}$/i;
+function colorAgenda(a) {
+  const mismo = agenda.filter(e => COL.test(e.color) && e.titulo.slice(0, 60) === a.nombre), dia = new Date(a.objetivo).toDateString();
+  const e = mismo.find(x => +new Date(x.inicio) === a.objetivo) || mismo.find(x => new Date(x.inicio).toDateString() === dia);
+  return e ? e.color : null;
+}
 // ---- agenda: cuadrado con borde del color de la etiqueta para el evento en curso (cuenta atrás hasta su fin, «−12:34») y, la hora anterior, hasta su inicio (borde discontinuo)
-const MAXQ = 3, cuadros = document.getElementById('cuadros'), elsQ = new Map();
+const MAXQ = 3, elsQ = new Map();
 let agenda = [];
 function pintarAgenda(ahora) {
-  const en = agenda.map(e => ({ ...e, i: +new Date(e.inicio), f: +new Date(e.fin), k: e.titulo + '|' + e.inicio })).filter(e => e.i - 36e5 <= ahora && ahora < e.f)
-    .sort((a, b) => (a.i > ahora) - (b.i > ahora) || (a.i > ahora ? a.i - b.i : a.f - b.f)).slice(0, MAXQ); // primero los en curso (el que acaba antes), luego los próximos
+  const en = agenda.filter(e => !e.todoDia && e.fin).map(e => ({ ...e, i: +new Date(e.inicio), f: +new Date(e.fin), k: e.titulo + '|' + e.inicio })).filter(e => e.i - 36e5 <= ahora && ahora < e.f)
+    .sort((a, b) => (a.i > ahora) - (b.i > ahora) || (a.i > ahora ? a.i - b.i : a.f - b.f)).slice(0, MAXQ); // primero los en curso (el que acaba antes), luego los próximos; el orden final con las alarmas lo da pintar()
   for (const [k, e] of elsQ) if (!en.some(x => x.k === k)) { e.remove(); elsQ.delete(k); }
-  en.forEach((ev, n) => {
+  return en.map(ev => {
     let e = elsQ.get(ev.k);
     if (!e) { e = document.createElement('div'); e.className = 'cuadro'; e.innerHTML = '<div class="nom"></div><div class="hora"></div>'; elsQ.set(ev.k, e); }
     if (/^#[0-9a-f]{6}$/i.test(ev.color)) e.style.setProperty('--bc', ev.color); else e.style.removeProperty('--bc');
@@ -79,7 +88,7 @@ function pintarAgenda(ahora) {
     const pronto = ev.i > ahora; e.classList.toggle('pronto', pronto);
     dibujar(e.querySelector('.hora'), '−' + Tiempo.formatear((pronto ? ev.i : ev.f) - ahora, false, formato));
     e.title = ev.titulo + (pronto ? ' · empieza a las ' : ' · hasta ') + new Date(pronto ? ev.i : ev.f).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    if (cuadros.children[n] !== e) cuadros.insertBefore(e, cuadros.children[n] || null);
+    return { e, p: 2, v: (pronto ? ev.i : ev.f) - ahora };
   });
 }
 alarmas.agenda().then(l => { agenda = l; });

@@ -79,7 +79,8 @@ try {
       $ini = $a.Start
       $id = ([string]$a.GlobalAppointmentID) + '@' + $ini.ToString('s')
       if ($vistos[$id]) { continue }; $vistos[$id] = 1
-      $cat = ([string]$a.Categories -split '[;,]')[0].Trim(); $color = $null
+      $cats = @(([string]$a.Categories -split '[;,]') | ForEach-Object { $_.Trim() } | Where-Object { $_ }); $color = $null
+      $cat = [string]($cats | Where-Object { $_ -ne 'Alarma' } | Select-Object -First 1); if (-not $cat -and $cats) { $cat = [string]$cats[0] }   # «Alarma» es la etiqueta funcional del Gestor: la que se enseña (y colorea) es la otra
       if ($cat -and $col[$cat]) { $color = $col[$cat] }
       $agenda.Add([ordered]@{ titulo = [string]$a.Subject; inicio = $ini.ToString('s'); fin = $a.End.ToString('s'); todoDia = [bool]$a.AllDayEvent; lugar = [string]$a.Location; categoria = $cat; color = $color })
     }
