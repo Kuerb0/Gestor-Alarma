@@ -61,8 +61,27 @@ function pintar() {
   });
   const resto = ord.length - vis.length;
   mas.style.display = resto ? 'block' : 'none'; mas.textContent = '+' + resto + ' más';
+  pintarAgenda(ahora);
   if (suena && ahora - ultimoPitido >= 1000) { ultimoPitido = ahora; pitido(); }
 }
+// ---- partes de la agenda que están pasando: cuadrado con borde del color de la etiqueta y cuenta atrás hasta su fin («−12:34»)
+const MAXQ = 3, cuadros = document.getElementById('cuadros'), elsQ = new Map();
+let agenda = [];
+function pintarAgenda(ahora) {
+  const en = agenda.map(e => ({ ...e, i: +new Date(e.inicio), f: +new Date(e.fin), k: e.titulo + '|' + e.inicio })).filter(e => e.i <= ahora && ahora < e.f).sort((a, b) => a.f - b.f).slice(0, MAXQ);
+  for (const [k, e] of elsQ) if (!en.some(x => x.k === k)) { e.remove(); elsQ.delete(k); }
+  en.forEach((ev, n) => {
+    let e = elsQ.get(ev.k);
+    if (!e) { e = document.createElement('div'); e.className = 'cuadro'; e.innerHTML = '<div class="nom"></div><div class="hora"></div>'; elsQ.set(ev.k, e); }
+    if (/^#[0-9a-f]{6}$/i.test(ev.color)) e.style.setProperty('--bc', ev.color); else e.style.removeProperty('--bc');
+    dibujar(e.querySelector('.nom'), ev.titulo.toUpperCase().slice(0, 10));
+    dibujar(e.querySelector('.hora'), '−' + Tiempo.formatear(ev.f - ahora, false, formato));
+    e.title = ev.titulo + ' · hasta ' + new Date(ev.f).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    if (cuadros.children[n] !== e) cuadros.insertBefore(e, cuadros.children[n] || null);
+  });
+}
+alarmas.agenda().then(l => { agenda = l; });
+alarmas.alAgenda(l => { agenda = l; });
 alarmas.lista().then(l => { datos = l; pintar(); });
 alarmas.alCambiar(l => { datos = l; pintar(); });
 alarmas.formato().then(f => { formato = f; pintar(); });

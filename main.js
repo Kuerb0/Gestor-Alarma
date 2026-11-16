@@ -26,7 +26,11 @@ const cargar = n => { try { return require('./' + n); } catch (e) { log('sin mó
 const Correo = HUMO ? null : cargar('correo'), Meteo = HUMO ? null : cargar('meteo'), Sistema = HUMO ? null : cargar('sistema');
 
 const guardarAjustes = () => { try { fs.writeFileSync(AJUSTES, JSON.stringify(ajustes)); } catch (e) { log('ajustes ' + e.message); } };
-const enviar = (canal, dato) => { cache[canal] = dato; win && !win.isDestroyed() && win.webContents.send(canal, dato); };
+const enviar = (canal, dato) => { cache[canal] = dato; win && !win.isDestroyed() && win.webContents.send(canal, dato); if (canal === 'correo') agendaAlOverlay(); };
+// eventos con hora y fin (los de todo el día no «pasan»): el overlay pinta como cuadrado el que está en curso
+const eventosOverlay = () => ((cache.correo && cache.correo.agenda) || []).filter(e => !e.todoDia && e.fin).map(e => ({ titulo: e.titulo, inicio: e.inicio, fin: e.fin, color: e.color }));
+function agendaAlOverlay() { const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) ov.webContents.send('agenda', eventosOverlay()); }
+ipcMain.handle('agenda:lista', eventosOverlay);
 const estado = () => enviar('estado', { abierto, fijado: ajustes.fijado });
 
 // ---- lecturas (si falla, se conserva el último dato bueno y se marca `obsoleto`)
@@ -258,7 +262,7 @@ async function humo() {
     categorias: [{ nombre: 'Trabajo', color: '#e5533d' }, { nombre: 'Salud', color: '#3a86ff' }, { nombre: 'Proyectos', color: '#3fa34d' }, { nombre: 'Urgente', color: '#f08c2e' }, { nombre: 'Personal', color: '#a06bff' }],
     agenda: [ // 9 eventos en 7 días: hoy 3 (uno de todo el día), mañana 1, +2 vacío, +3 2, +4 1, +5 vacío, +6 2
       { titulo: 'Cumpleaños de Marta', inicio: iso(h0), fin: iso(h0 + d), todoDia: true, lugar: '' },
-      { titulo: 'Reunión de equipo', inicio: iso(h0 + 0 * d + 10 * h), fin: iso(h0 + 0 * d + 11 * h), todoDia: false, lugar: '', categoria: 'Trabajo', color: '#e5533d' },
+      { titulo: 'Reunión de equipo', inicio: iso(ahora - h / 3), fin: iso(ahora + 35 * 6e4), /* en curso: sale como cuadrado en el overlay */ todoDia: false, lugar: '', categoria: 'Trabajo', color: '#e5533d' },
       { titulo: 'Llamada con el banco', inicio: iso(h0 + 0 * d + 17 * h), fin: iso(h0 + 0 * d + 18 * h), todoDia: false, lugar: '' },
       { titulo: 'Dentista', inicio: iso(h0 + 1 * d + 10 * h), fin: iso(h0 + 1 * d + 11 * h), todoDia: false, lugar: 'Clínica', categoria: 'Salud', color: '#3a86ff' },
       { titulo: 'Revisión de proyecto', inicio: iso(h0 + 3 * d + 9 * h), fin: iso(h0 + 3 * d + 10.5 * h), todoDia: false, lugar: 'Sala 2', categoria: 'Proyectos', color: '#3fa34d' },
@@ -272,7 +276,8 @@ async function humo() {
   enviar('meteo', { ok: true, lugar: { nombre: 'Madrid', lat: 40.4, lon: -3.7, categoria: 'Personal', color: '#a06bff' }, actual: { temp: 18, codigo: 1, texto: 'Mayormente despejado', icono: '🌤️', viento: 14 },
     horas: Array.from({ length: 24 }, (_, i) => ({ hora: String(i).padStart(2, '0') + ':00', temp: Math.round(13 + 6 * Math.cos((i - 15) / 24 * 2 * Math.PI)), icono: ic[(i / 3 | 0) % 5], lluvia: (i * 7) % 60 })),
     ahora: new Date().getHours() + new Date().getMinutes() / 60,
-    dias: nd.map((n, i) => ({ fecha: iso(ahora + i * d).slice(0, 10), nombre: n, max: 20 + i, min: 9 + i, icono: ic[i], texto: '', lluvia: i * 15 })) });
+    dias: nd.map((n, i) => ({ fecha: iso(ahora + i * d).slice(0, 10), nombre: n, max: 20 + i, min: 9 + i, icono: ic[i], texto: 'Soleado', lluvia: i * 15,
+      horas: Array.from({ length: 24 }, (_, k) => ({ hora: String(k).padStart(2, '0') + ':00', temp: Math.round(13 + i * 1.5 + 6 * Math.cos((k - 15) / 24 * 2 * Math.PI)), icono: ic[(k / 3 | 0) % 5], lluvia: (k * 5 + i * 9) % 50 })) })) });
   Alarmas.datosHumo();
   enviar('sistema', { cpu: 23, ramUsada: 9.5e9, ramTotal: 16e9, discoLibre: 180e9, discoTotal: 500e9 });
   nueva = { version: '9.9.9' }; pintarAct(); // pastilla de «versión nueva» inventada
@@ -344,6 +349,16 @@ async function humo() {
   completa = true; pintarAct(); await esp(200);
   if (await js(win, `document.getElementById('nueva')?.hidden`) !== true) fallos.push('la pastilla sigue en pantalla completa');
   completa = false;
+  const cuadros = await n(Alarmas.overlay(), '.cuadro'); if (cuadros !== 1) fallos.push('cuadros de agenda en el overlay: ' + cuadros + ' (esperado 1)');
+  const cu = await js(Alarmas.overlay(), `document.querySelector('.cuadro .hora').textContent`); if (!/^−\d\d:\d\d$/.test(cu)) fallos.push('cuenta atrás del cuadro: ' + cu);
+  await captura('overlay-cuadros', Alarmas.overlay());
+  await js(win, `document.querySelector('button[data-tab="tiempo"]').click()`); await esp(300);
+  await js(win, `document.querySelector('.fr-b[data-d="1"]').click()`); await esp(200);
+  if (await n(win, '.fr-hoy') !== 1) fallos.push('mañana: falta la curva translúcida de hoy');
+  if (await n(win, '.fr-ya') !== 0) fallos.push('mañana: no debería haber línea de «ahora»');
+  await captura('panel-tiempo-manana', win);
+  await js(win, `document.querySelector('.fr-b[data-d="-1"]').click()`); await esp(100);
+  if (await n(win, '.fr-hoy') !== 0 || await n(win, '.fr-ya') !== 1) fallos.push('volver a hoy: gráfico incorrecto');
   const tarjetas = await n(Alarmas.overlay(), '.tarjeta');
   if (tarjetas !== 5) fallos.push('tarjetas visibles: ' + tarjetas + ' (esperadas 5)');
   console.log(fallos.length ? 'HUMO FALLA\n' + fallos.join('\n') : 'HUMO OK · capturas en ' + salida);

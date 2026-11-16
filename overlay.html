@@ -34,8 +34,13 @@ body{padding:6px 10px 8px}
 .perdida{--th:var(--rojo);box-shadow:0 4px 14px var(--sombra),0 0 0 1px rgba(255,90,77,.5)}
 .perdida .nom{color:var(--rojo)}
 @media (prefers-reduced-motion:reduce){.sonando,.sonando .nom,.sonando .hora{animation:none}.sonando{background:linear-gradient(180deg,#ffc94d,#ffb000);box-shadow:0 0 18px rgba(255,176,0,.75)}.hora .c{animation:none}}
+.cuadros{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:8px;clear:both}
+.cuadro{--bc:var(--acento);box-sizing:border-box;width:72px;height:72px;padding:4px 3px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center;
+  background:linear-gradient(180deg,var(--vidrio2),var(--vidrio));border:2px solid var(--bc);box-shadow:0 4px 14px var(--sombra),0 0 10px color-mix(in srgb,var(--bc) 45%,transparent)}
+.cuadro .nom{font-size:9px;line-height:11px;max-width:100%;overflow:hidden;color:var(--txt2)}
+.cuadro .hora{font-size:14px;line-height:16px;color:var(--bc)}
 #mas{display:none;margin-top:6px;float:right;color:var(--txt2);font-size:11px;font-weight:600;padding:0 6px;text-shadow:0 0 3px var(--vidrio),0 0 6px var(--vidrio),var(--ts)}
 </style></head>
-<body><div id="lista"></div><div id="mas"></div>
+<body><div id="lista"></div><div id="mas"></div><div id="cuadros" class="cuadros"></div>
 <script src="tiempo.js"></script>
 <script src="overlay.js"></script></body></html>

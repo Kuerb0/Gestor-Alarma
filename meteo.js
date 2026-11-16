@@ -27,16 +27,18 @@ function armar(j, lugar, ahora) {
   const c = j.current, h = j.hourly, d = j.daily;
   const horaLocal = (c.time || `${ymd(ahora)}T${dd(ahora.getHours())}:00`).slice(0, 13);
   const hoy = horaLocal.slice(0, 10);
-  let i0 = h.time.findIndex(t => t.slice(0, 10) === hoy);
-  if (i0 < 0) i0 = 0;
-  const horas = h.time.slice(i0, i0 + 24).map((t, k) => ({
-    hora: t.slice(11, 13) + ':00', temp: r(h.temperature_2m[i0 + k]), icono: wmo(h.weather_code[i0 + k]).icono, lluvia: r(h.precipitation_probability[i0 + k] || 0),
-  }));
+  const delDia = f => { // las 24 h de un día (f = 'AAAA-MM-DD')
+    let i = h.time.findIndex(t => t.slice(0, 10) === f); if (i < 0) { if (f !== hoy) return []; i = 0; } // hoy sin coincidencia: las primeras 24 h
+    return h.time.slice(i, i + 24).map((t, k) => ({
+      hora: t.slice(11, 13) + ':00', temp: r(h.temperature_2m[i + k]), icono: wmo(h.weather_code[i + k]).icono, lluvia: r(h.precipitation_probability[i + k] || 0),
+    }));
+  };
+  const horas = delDia(hoy);
   const ahoraH = Number(horaLocal.slice(11, 13)) + (c.time ? Number(c.time.slice(14, 16)) || 0 : ahora.getMinutes()) / 60; // horas decimales en la zona del lugar
   const manana = ymd(new Date(new Date(hoy + 'T12:00:00').getTime() + 864e5));
   const dias = d.time.map((f, k) => ({
     fecha: f, nombre: f === hoy ? 'Hoy' : f === manana ? 'Mañana' : DIAS[new Date(f + 'T12:00:00').getDay()],
-    max: r(d.temperature_2m_max[k]), min: r(d.temperature_2m_min[k]), icono: wmo(d.weather_code[k]).icono, texto: wmo(d.weather_code[k]).texto, lluvia: r(d.precipitation_probability_max[k] || 0),
+    max: r(d.temperature_2m_max[k]), min: r(d.temperature_2m_min[k]), icono: wmo(d.weather_code[k]).icono, texto: wmo(d.weather_code[k]).texto, lluvia: r(d.precipitation_probability_max[k] || 0), horas: delDia(f),
   })).slice(0, 5);
   const w = wmo(c.weather_code);
   return { ok: true, lugar, actual: { temp: r(c.temperature_2m), codigo: c.weather_code, texto: w.texto, icono: w.icono, viento: r(c.wind_speed_10m) }, horas, ahora: ahoraH, dias };

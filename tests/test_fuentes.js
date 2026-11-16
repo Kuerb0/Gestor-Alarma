@@ -61,3 +61,6 @@ assert.strictEqual(validarEvento({ ...ev, categoria: 'Salud', lugar: 'Clínica' 
 for (const mal of [null, 'x', { ...ev, titulo: '  ' }, { ...ev, titulo: 'a'.repeat(201) }, { ...ev, titulo: 5 }, { ...ev, inicio: 'ayer' }, { ...ev, inicio: '2030-02-31T10:00:00' },
   { ...ev, fin: ev.inicio }, { ...ev, fin: '2030-01-01T09:00:00' }, { ...ev, categoria: 3 }, { ...ev, lugar: {} }]) assert.ok(validarEvento(mal), JSON.stringify(mal));
 assert.strictEqual(validarEvento({ ...ev, titulo: 'a'.repeat(200) }), null);
+// armar: cada día trae sus 24 h (para ver mañana/pasado en el gráfico); el último día sin horas completas no revienta
+assert.strictEqual(m.dias[1].horas.length, 24); assert.strictEqual(m.dias[1].horas[0].temp, 24); assert.deepStrictEqual(m.dias[2].horas, []);
+assert.deepStrictEqual(m.dias[0].horas, m.horas);

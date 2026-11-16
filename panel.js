@@ -11,6 +11,12 @@ function reloj() {
   $('hora').textContent = hhmm(n);
   $('fecha').textContent = n.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 }
+$('tiempo').addEventListener('click', e => { const b = e.target.closest('.fr-b'); if (b && !b.disabled) { diaSel += +b.dataset.d; pintaMeteo(); } });
+document.addEventListener('keydown', e => { // ← → en la pestaña Tiempo (con el foco fuera de las pestañas y los campos): cambia de día
+  if ($('p-tiempo').hidden || e.target.closest('#tabs') || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+  const b = document.querySelector('.fr-b[data-d="' + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0) + '"]');
+  if (b && !b.disabled) { e.preventDefault(); b.click(); }
+});
 $('act').onclick = () => api.actualizar();
 $('pin').onclick = () => api.fijar(!$('pin').classList.contains('on'));
 // ---- pestañas
@@ -50,32 +56,44 @@ function curva(p) { // spline Catmull-Rom -> Béziers, sin salirse de la franja 
   }
   return d;
 }
-// Gráfico del día (0–24 h, sin scroll). `ah` = hora decimal de ahora; `ta` = temperatura actual.
-function franja(horas, ah, ta) {
-  const n = horas.length, T = horas.map(h => Math.round(h.temp)), mx = Math.max(...T), mn = Math.min(...T), im = T.indexOf(mx), ii = T.indexOf(mn);
+// Gráfico del día (0–24 h, sin scroll). `ah` = hora decimal de ahora (-1: otro día, sin «ahora»); `ta` = temperatura actual;
+// `ref` = horas de HOY, que en otro día se dibujan como una curva translúcida para comparar (misma escala).
+function franja(horas, ah, ta, ref, nombre) {
+  const n = horas.length, T = horas.map(h => Math.round(h.temp)), TR = ref ? ref.map(h => Math.round(h.temp)) : [];
+  const dmx = Math.max(...T), dmn = Math.min(...T), mx = Math.max(dmx, ...TR), mn = Math.min(dmn, ...TR), im = T.indexOf(dmx), ii = T.indexOf(dmn), hoy = ah >= 0;
   const yt = v => GB - (mx === mn ? .5 : clamp((v - mn) / (mx - mn), 0, 1)) * (GB - GT);
-  const p = T.map((v, i) => [xh(i), yt(v)]), c = curva(p), xa = xh(ah), ya = yt(ta);
+  const p = T.map((v, i) => [xh(i), yt(v)]), c = curva(p), xa = hoy ? xh(ah) : 0, ya = hoy ? yt(ta) : 0;
+  const refCurva = TR.length > 1 ? `<path class="fr-hoy" d="${curva(TR.map((v, i) => [xh(i), yt(v)]))}"/>` : '';
   const fin = `L${p[n - 1][0].toFixed(1)} ${BY}L${p[0][0].toFixed(1)} ${BY}Z`;
   const grupo = cl => `<g clip-path="url(#${cl})"><path class="fr-a" d="${c}${fin}"/><path class="fr-l" d="${c}"/></g>`;
-  const marcas = new Set(mx === mn ? [] : [im, ii]); // temperaturas con texto: máx/mín y cada 3 h, sin pisar la de ahora ni las marcadas
+  const marcas = new Set(dmx === dmn ? [] : [im, ii]); // temperaturas con texto: máx/mín y cada 3 h, sin pisar la de ahora ni las marcadas
   const lbl = [...marcas].map(i => [i, 1]).concat(Array.from({ length: n }, (_, i) => i).filter(i => i % 3 === 0 && ![...marcas].some(m => Math.abs(m - i) < 2)).map(i => [i, 0]));
   const textos = lbl.filter(([i]) => Math.abs(i - ah) >= 2).map(([i, k]) => `<circle class="${k ? 'fr-k' : 'fr-p'}" cx="${p[i][0].toFixed(1)}" cy="${p[i][1].toFixed(1)}" r="${k ? 3.5 : 2}"/><text class="fr-t${k ? ' k' : ''}${i < ah ? ' pas' : ''}" x="${p[i][0].toFixed(1)}" y="${(p[i][1] - 8).toFixed(1)}">${T[i]}°</text>`).join('');
   const iconos = horas.map((h, i) => i % 3 ? '' : `<text class="fr-i${i < ah ? ' pas' : ''}" x="${xh(i).toFixed(1)}" y="${IY}">${esc(h.icono)}</text>`).join('');
   const eje = Array.from({ length: 8 }, (_, k) => `<text class="fr-h${k * 3 < ah ? ' pas' : ''}" x="${xh(k * 3).toFixed(1)}" y="${GH - 4}">${k * 3}h</text>`).join('');
   const lluvia = horas.map((h, i) => h.lluvia > 0 ? `<rect class="fr-ll${i < ah ? ' pas' : ''}" x="${(xh(i) - 1.25).toFixed(1)}" y="${(BY - Math.max(2, h.lluvia * .14)).toFixed(1)}" width="2.5" height="${Math.max(2, h.lluvia * .14).toFixed(1)}" rx="1.25"/>` : '').join('');
-  return `<div class="franja"><svg class="fr-g" viewBox="0 0 ${W} ${GH}" role="img" aria-label="Temperatura de hoy, de ${mn}° a ${mx}°, ahora ${Math.round(ta)}°">
+  return `<div class="franja"><svg class="fr-g" viewBox="0 0 ${W} ${GH}" role="img" aria-label="Temperatura de ${esc(nombre)}, de ${dmn}° a ${dmx}°${hoy ? `, ahora ${Math.round(ta)}°` : ''}">
     <defs><linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop class="g1" offset="0"/><stop class="g2" offset="1"/></linearGradient>
       <clipPath id="cp"><rect x="0" y="0" width="${xa.toFixed(1)}" height="${GH}"/></clipPath><clipPath id="cf"><rect x="${xa.toFixed(1)}" y="0" width="${W}" height="${GH}"/></clipPath></defs>
-    <g class="pas">${grupo('cp')}</g>${grupo('cf')}<line class="fr-e" x1="${PX}" y1="${BY}" x2="${W - PX}" y2="${BY}"/>${lluvia}${iconos}${textos}
-    <line class="fr-ya" x1="${xa.toFixed(1)}" y1="${IY + 8}" x2="${xa.toFixed(1)}" y2="${BY}"/><circle class="fr-k" cx="${xa.toFixed(1)}" cy="${ya.toFixed(1)}" r="4.5"/>
-    <text class="fr-t k" x="${clamp(xa, 14, W - 14).toFixed(1)}" y="${(ya - 10).toFixed(1)}">${Math.round(ta)}°</text>${eje}</svg></div>`;
+    ${refCurva}<g class="pas">${grupo('cp')}</g>${grupo('cf')}<line class="fr-e" x1="${PX}" y1="${BY}" x2="${W - PX}" y2="${BY}"/>${lluvia}${iconos}${textos}
+    ${hoy ? `<line class="fr-ya" x1="${xa.toFixed(1)}" y1="${IY + 8}" x2="${xa.toFixed(1)}" y2="${BY}"/><circle class="fr-k" cx="${xa.toFixed(1)}" cy="${ya.toFixed(1)}" r="4.5"/>
+    <text class="fr-t k" x="${clamp(xa, 14, W - 14).toFixed(1)}" y="${(ya - 10).toFixed(1)}">${Math.round(ta)}°</text>` : ''}${eje}</svg></div>`;
 }
+let diaSel = 0; // día que muestra el gráfico: 0 = hoy, 1 = mañana…
+const NOM_DIA = ['Hoy', 'Mañana', 'Pasado mañana'];
 function pintaMeteo() {
   const r = meteo, t = $('tiempo');
   if (!r || !r.ok) { t.innerHTML = '<div class="vacio">Tiempo no disponible</div>'; return; }
-  const a = r.actual, hs = (r.horas || []).slice(0, 24), ah = clamp((Number.isFinite(r.ahora) ? r.ahora : new Date().getHours() + new Date().getMinutes() / 60) + (Date.now() - meteoT) / 36e5, 0, 24);
-  t.innerHTML = (hs.length > 1 ? franja(hs, ah, a.temp) : '') + `<div class="ahora"><div class="ic">${esc(a.icono)}</div><div class="t">${Math.round(a.temp)}°</div>
-    <div class="x"><b>${esc(a.texto)}</b><br>${esc(r.lugar.nombre)} · viento ${Math.round(a.viento)} km/h</div></div>
+  const horasDe = k => k === 0 ? (r.horas || []).slice(0, 24) : ((r.dias[k] && r.dias[k].horas) || []).slice(0, 24);
+  let max = 0; while (max + 1 < r.dias.length && horasDe(max + 1).length > 1) max++;
+  diaSel = clamp(diaSel, 0, max);
+  const a = r.actual, hs = horasDe(diaSel), dsel = r.dias[diaSel], ah = diaSel ? -1 : clamp((Number.isFinite(r.ahora) ? r.ahora : new Date().getHours() + new Date().getMinutes() / 60) + (Date.now() - meteoT) / 36e5, 0, 24);
+  const nombre = diaSel < 3 ? NOM_DIA[diaSel].toLowerCase() : String(dsel.nombre);
+  const nav = max ? `<div class="fr-nav"><button class="fr-b" data-d="-1" aria-label="Día anterior"${diaSel ? '' : ' disabled'}>‹</button><span aria-live="polite">${esc(diaSel < 3 ? NOM_DIA[diaSel] : dsel.nombre)}</span><button class="fr-b" data-d="1" aria-label="Día siguiente"${diaSel < max ? '' : ' disabled'}>›</button></div>` : '';
+  const resumen = diaSel ? `<div class="ahora"><div class="ic">${esc(dsel.icono)}</div><div class="t">${Math.round(dsel.max)}°</div>
+    <div class="x"><b>${esc(dsel.texto)}</b><br>mín ${Math.round(dsel.min)}° · lluvia ${Math.round(dsel.lluvia || 0)}%</div></div>` : `<div class="ahora"><div class="ic">${esc(a.icono)}</div><div class="t">${Math.round(a.temp)}°</div>
+    <div class="x"><b>${esc(a.texto)}</b><br>${esc(r.lugar.nombre)} · viento ${Math.round(a.viento)} km/h</div></div>`;
+  t.innerHTML = nav + (hs.length > 1 ? franja(hs, ah, a.temp, diaSel ? horasDe(0) : null, nombre) : '') + resumen + `
     <div class="dias">${r.dias.slice(0, 5).map(d => `<div>${esc(String(d.nombre).slice(0, 3))}<span class="ic">${esc(d.icono)}</span><span>${Math.round(d.max)}° <small>${Math.round(d.min)}°</small></span><span class="ll">${Math.round(d.lluvia || 0)}%</span></div>`).join('')}</div>`;
 }
 

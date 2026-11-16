@@ -27,4 +27,6 @@ contextBridge.exposeInMainWorld('alarmas', {
   syncVentana: d => ipcRenderer.invoke('sync:ventana', d),
   alSync: cb => ipcRenderer.on('sync', (_, s) => cb(s)),
   alCambiar: cb => ipcRenderer.on('alarmas', (_, l) => cb(l)),
+  agenda: () => ipcRenderer.invoke('agenda:lista'), // eventos de la agenda (los que están pasando salen como cuadrados en el overlay)
+  alAgenda: cb => ipcRenderer.on('agenda', (_, l) => cb(l)),
 });
