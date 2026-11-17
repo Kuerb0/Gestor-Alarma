@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema', 'actualizacion'];
+const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema', 'actualizacion', 'widgets'];
 contextBridge.exposeInMainWorld('api', {
   on: (canal, fn) => { if (CANALES.includes(canal)) ipcRenderer.on(canal, (_, d) => fn(d)); },
   abrirCorreo: id => ipcRenderer.send('abrir-correo', id),
@@ -13,6 +13,13 @@ contextBridge.exposeInMainWorld('api', {
   editarEvento: ev => ipcRenderer.invoke('agenda:editar', ev),
   notasLeer: () => ipcRenderer.invoke('notas:leer'),
   notasGuardar: lista => ipcRenderer.invoke('notas:guardar', lista),
+  buscarCiudad: t => ipcRenderer.invoke('lugares:buscar', t),
+  anadirCiudad: l => ipcRenderer.invoke('lugares:anadir', l),
+  quitarCiudad: k => ipcRenderer.invoke('lugares:quitar', k),
+  widget: (tipo, poner) => ipcRenderer.send('widget:poner', tipo, !!poner), // widgets del escritorio
+  widgetAlto: h => ipcRenderer.send('widget:alto', h),
+  widgetEstilo: e => ipcRenderer.send('widget:estilo', e),
+  widgetCerrar: () => ipcRenderer.send('widget:cerrar'),
   fijar: b => ipcRenderer.send('fijar', !!b),
   actualizar: () => ipcRenderer.send('actualizar'),
   cerrar: () => ipcRenderer.send('cerrar'),

@@ -58,7 +58,14 @@
         <div class="ev-fila"><button type="submit" id="ev-crear" class="btn-txt">Añadir a Outlook</button><button type="button" id="ev-cancelar" class="btn-sec">Cancelar</button></div>
       </form>
       <div id="agenda"></div></section>
-    <section class="pestana" id="p-tiempo" role="tabpanel" aria-labelledby="t-tiempo" hidden><div id="tiempo"><div class="vacio">Cargando el tiempo…</div></div></section>
+    <section class="pestana" id="p-tiempo" role="tabpanel" aria-labelledby="t-tiempo" hidden>
+      <h2><span>Tiempo</span> <span class="hb"><button id="ci-abrir" class="btn-sec" aria-expanded="false" aria-controls="ci-form" title="Añadir otra ciudad">＋ Ciudad</button> <button class="btn-sec wd" data-w="tiempo" aria-pressed="false" title="Poner este gráfico como widget en el escritorio">🖥️ Widget</button></span></h2>
+      <form id="ci-form" class="tarjeta" autocomplete="off" hidden>
+        <label>Ciudad<input id="ci-texto" class="campo" maxlength="80" placeholder="Alcalá de Henares"></label>
+        <div id="ci-res" role="status"></div>
+        <div class="ev-fila"><button type="submit" class="btn-txt">Buscar</button><button type="button" id="ci-cancelar" class="btn-sec">Cancelar</button></div>
+      </form>
+      <div id="tiempo"><div class="vacio">Cargando el tiempo…</div></div></section>
     <section class="pestana" id="p-notas" role="tabpanel" aria-labelledby="t-notas" hidden>
       <h2><span>Notas rápidas</span> <span id="nt-n" class="aviso"></span></h2>
       <form id="nt-form" class="tarjeta" autocomplete="off">
@@ -68,9 +75,12 @@
       </form>
       <div id="nt-lista"></div>
     </section>
-    <section class="pestana" id="p-sistema" role="tabpanel" aria-labelledby="t-sistema" hidden><div id="sistema"></div></section>
+    <section class="pestana" id="p-sistema" role="tabpanel" aria-labelledby="t-sistema" hidden>
+      <h2><span>Sistema</span> <button class="btn-sec wd" data-w="sistema" aria-pressed="false" title="Poner estas barras como widget en el escritorio">🖥️ Widget</button></h2>
+      <div id="sistema"></div></section>
   </div>
 </main>
+<script src="graficos.js"></script>
 <script src="tiempo.js"></script>
 <script src="pestana_alarmas.js"></script>
 <script src="panel.js"></script>

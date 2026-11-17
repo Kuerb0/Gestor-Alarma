@@ -1,5 +1,4 @@
 const $ = id => document.getElementById(id);
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const p2 = n => String(n).padStart(2, '0');
 const hhmm = d => p2(d.getHours()) + ':' + p2(d.getMinutes());
 const dia0 = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -11,7 +10,31 @@ function reloj() {
   $('hora').textContent = hhmm(n);
   $('fecha').textContent = n.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 }
-$('tiempo').addEventListener('click', e => { const b = e.target.closest('.fr-b'); if (b && !b.disabled) { diaSel += +b.dataset.d; pintaMeteo(); } });
+$('tiempo').addEventListener('click', e => {
+  const b = e.target.closest('.fr-b'), c = e.target.closest('.ciu-n'), q = e.target.closest('.ciu-q');
+  if (b && !b.disabled) { diaSel += +b.dataset.d; pintaMeteo(); }
+  else if (c) { ciudadSel = c.dataset.c; try { localStorage.setItem('ciudad', ciudadSel); } catch {} pintaMeteo(); }
+  else if (q) api.quitarCiudad(q.dataset.q);
+});
+// añadir ciudad: buscar por nombre (la búsqueda la hace main) y elegir entre los resultados
+let ciOpc = [];
+$('ci-abrir').onclick = () => { const f = $('ci-form'); f.hidden = !f.hidden; $('ci-abrir').setAttribute('aria-expanded', !f.hidden); if (!f.hidden) $('ci-texto').focus(); };
+$('ci-cancelar').onclick = () => { $('ci-form').hidden = true; $('ci-abrir').setAttribute('aria-expanded', 'false'); $('ci-res').innerHTML = ''; };
+$('ci-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const t = $('ci-texto').value.trim(); if (t.length < 2) return;
+  $('ci-res').innerHTML = '<div class="vacio">Buscando…</div>';
+  const r = await api.buscarCiudad(t);
+  ciOpc = r && r.ok ? r.lugares : [];
+  $('ci-res').innerHTML = !r || !r.ok ? '<div class="vacio">No se pudo buscar (¿sin conexión?)</div>' : ciOpc.length ? ciOpc.map((l, i) => `<button type="button" class="ci-op" data-i="${i}"><b>${esc(l.nombre)}</b><small>${esc(l.detalle)}</small></button>`).join('') : '<div class="vacio">Sin resultados</div>';
+});
+$('ci-res').addEventListener('click', async e => {
+  const b = e.target.closest('.ci-op'), l = b && ciOpc[+b.dataset.i]; if (!l) return;
+  const r = await api.anadirCiudad(l);
+  if (!r || !r.ok) { $('ci-res').innerHTML = `<div class="vacio">${esc((r && r.motivo) || 'No se pudo añadir')}</div>`; return; }
+  ciudadSel = `${l.nombre}|${l.lat.toFixed(2)}|${l.lon.toFixed(2)}`; try { localStorage.setItem('ciudad', ciudadSel); } catch {} pintaMeteo(); // la nueva queda elegida
+  $('ci-texto').value = ''; $('ci-cancelar').click();
+});
 document.addEventListener('keydown', e => { // ← → en la pestaña Tiempo (con el foco fuera de las pestañas y los campos): cambia de día
   if ($('p-tiempo').hidden || e.target.closest('#tabs') || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
   const b = document.querySelector('.fr-b[data-d="' + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0) + '"]');
@@ -46,71 +69,9 @@ document.addEventListener('keydown', e => { // Esc: vacía el campo con texto de
 
 
 // ---- tiempo
-const W = 340, PX = 16, IY = 17, GT = 58, GB = 112, BY = 126, GH = 150; // ancho del gráfico (viewBox; se escala al ancho útil), margen lateral, y de iconos / máx / mín / base de la lluvia, alto
-const xh = h => PX + h / 24 * (W - 2 * PX), clamp = (y, a, b) => Math.max(a, Math.min(b, y));
-let meteo = null, meteoT = 0;
-function curva(p) { // spline Catmull-Rom -> Béziers, sin salirse de la franja de la curva
-  const q = i => p[Math.max(0, Math.min(p.length - 1, i))], c = y => clamp(y, GT, GB).toFixed(1);
-  let d = `M${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
-  for (let i = 0; i < p.length - 1; i++) {
-    const a = q(i - 1), b = q(i), e = q(i + 1), f = q(i + 2);
-    d += `C${(b[0] + (e[0] - a[0]) / 6).toFixed(1)} ${c(b[1] + (e[1] - a[1]) / 6)} ${(e[0] - (f[0] - b[0]) / 6).toFixed(1)} ${c(e[1] - (f[1] - b[1]) / 6)} ${e[0].toFixed(1)} ${e[1].toFixed(1)}`;
-  }
-  return d;
-}
-// Gráfico del día (0–24 h, sin scroll). `ah` = hora decimal de ahora (-1: otro día, sin «ahora»); `ta` = temperatura actual;
-// `ref` = horas de HOY, que en otro día se dibujan como una curva translúcida para comparar (misma escala).
-// `horas` puede ser de horas en punto (hd = índice) o de puntos cada 15 min (hd = hora decimal, 14.25 = 14:15).
-function franja(horas, ah, ta, ref, nombre) {
-  const n = horas.length, T = horas.map(h => Math.round(h.temp)), TR = ref ? ref.map(h => Math.round(h.temp)) : [];
-  const HD = horas.map((h, i) => h.hd ?? i), enHora = i => Number.isInteger(HD[i]);
-  const dmx = Math.max(...T), dmn = Math.min(...T), mx = Math.max(dmx, ...TR), mn = Math.min(dmn, ...TR), im = T.indexOf(dmx), ii = T.indexOf(dmn), hoy = ah >= 0;
-  const yt = v => GB - (mx === mn ? .5 : clamp((v - mn) / (mx - mn), 0, 1)) * (GB - GT);
-  const X = HD.map(hd => xh(hd)), p = T.map((v, i) => [X[i], yt(v)]), c = curva(p), xa = hoy ? xh(ah) : 0, ya = hoy ? yt(ta) : 0;
-  const refCurva = TR.length > 1 ? `<path class="fr-hoy" d="${curva(TR.map((v, i) => [xh(i), yt(v)]))}"/>` : '';
-  const fin = `L${p[n - 1][0].toFixed(1)} ${BY}L${p[0][0].toFixed(1)} ${BY}Z`;
-  const grupo = cl => `<g clip-path="url(#${cl})"><path class="fr-a" d="${c}${fin}"/><path class="fr-l" d="${c}"/></g>`;
-  const marcas = new Set(dmx === dmn ? [] : [im, ii]); // temperaturas con texto: máx/mín y cada 3 h, sin pisar la de ahora ni las marcadas
-  const lbl = [...marcas].map(i => [i, 1]).concat(Array.from({ length: n }, (_, i) => i).filter(i => enHora(i) && HD[i] % 3 === 0 && ![...marcas].some(m => Math.abs(HD[m] - HD[i]) < 2)).map(i => [i, 0]));
-  const textos = lbl.filter(([i]) => Math.abs(HD[i] - ah) >= 2).map(([i, k]) => `<circle class="${k ? 'fr-k' : 'fr-p'}" cx="${p[i][0].toFixed(1)}" cy="${p[i][1].toFixed(1)}" r="${k ? 3.5 : 2}"/><text class="fr-t${k ? ' k' : ''}${HD[i] < ah ? ' pas' : ''}" x="${p[i][0].toFixed(1)}" y="${(p[i][1] - 8).toFixed(1)}">${T[i]}°</text>`).join('');
-  const iconos = horas.map((h, i) => !enHora(i) || HD[i] % 3 || !h.icono ? '' : `<text class="fr-i${HD[i] < ah ? ' pas' : ''}" x="${X[i].toFixed(1)}" y="${IY}">${esc(h.icono)}</text>`).join('');
-  const eje = Array.from({ length: 8 }, (_, k) => `<text class="fr-h${k * 3 < ah ? ' pas' : ''}" x="${xh(k * 3).toFixed(1)}" y="${GH - 4}">${k * 3}h</text>`).join('');
-  const lluvia = horas.map((h, i) => enHora(i) && h.lluvia > 0 ? `<rect class="fr-ll${HD[i] < ah ? ' pas' : ''}" x="${(X[i] - 1.25).toFixed(1)}" y="${(BY - Math.max(2, h.lluvia * .14)).toFixed(1)}" width="2.5" height="${Math.max(2, h.lluvia * .14).toFixed(1)}" rx="1.25"/>` : '').join('');
-  return `<div class="franja"><svg class="fr-g" viewBox="0 0 ${W} ${GH}" role="img" aria-label="Temperatura de ${esc(nombre)}, de ${dmn}° a ${dmx}°${hoy ? `, ahora ${Math.round(ta)}°` : ''}">
-    <defs><linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop class="g1" offset="0"/><stop class="g2" offset="1"/></linearGradient>
-      <clipPath id="cp"><rect x="0" y="0" width="${xa.toFixed(1)}" height="${GH}"/></clipPath><clipPath id="cf"><rect x="${xa.toFixed(1)}" y="0" width="${W}" height="${GH}"/></clipPath></defs>
-    ${refCurva}<g class="pas">${grupo('cp')}</g>${grupo('cf')}<line class="fr-e" x1="${PX}" y1="${BY}" x2="${W - PX}" y2="${BY}"/>${lluvia}${iconos}${textos}
-    ${hoy ? `<line class="fr-ya" x1="${xa.toFixed(1)}" y1="${IY + 8}" x2="${xa.toFixed(1)}" y2="${BY}"/><circle class="fr-k" cx="${xa.toFixed(1)}" cy="${ya.toFixed(1)}" r="4.5"/>
-    <text class="fr-t k" x="${clamp(xa, 14, W - 14).toFixed(1)}" y="${(ya - 10).toFixed(1)}">${Math.round(ta)}°</text>` : ''}${eje}</svg></div>`;
-}
-// Resumen del día bajo el gráfico: máximos (viento, UV) o medias (humedad, sensación, presión, nubes) de sus horas
-function detalles(hs) {
-  const vals = k => hs.map(h => h[k]).filter(x => x != null);
-  const media = k => { const v = vals(k); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
-  const maximo = k => { const v = vals(k); return v.length ? Math.max(...v) : null; };
-  const f = (nombre, v, u) => v == null ? '' : `<span>${nombre} <b>${Math.round(v)}${u}</b></span>`;
-  const s = f('viento máx', maximo('viento'), ' km/h') + f('humedad', media('humedad'), '%') + f('sensación', media('sens'), '°') +
-    f('UV máx', maximo('uv'), '') + f('presión', media('presion'), ' hPa') + f('nubes', media('nubes'), '%');
-  return s ? `<div class="det">${s}</div>` : '';
-}
-let diaSel = 0; // día que muestra el gráfico: 0 = hoy, 1 = mañana…
-const NOM_DIA = ['Hoy', 'Mañana', 'Pasado mañana'];
-function pintaMeteo() {
-  const r = meteo, t = $('tiempo');
-  if (!r || !r.ok) { t.innerHTML = '<div class="vacio">Tiempo no disponible</div>'; return; }
-  const horasDe = k => k === 0 ? (r.horas || []).slice(0, 24) : ((r.dias[k] && r.dias[k].horas) || []).slice(0, 24);
-  let max = 0; while (max + 1 < r.dias.length && horasDe(max + 1).length > 1) max++;
-  diaSel = clamp(diaSel, 0, max);
-  const a = r.actual, hs = horasDe(diaSel), dsel = r.dias[diaSel], ah = diaSel ? -1 : clamp((Number.isFinite(r.ahora) ? r.ahora : new Date().getHours() + new Date().getMinutes() / 60) + (Date.now() - meteoT) / 36e5, 0, 24);
-  const nombre = diaSel < 3 ? NOM_DIA[diaSel].toLowerCase() : String(dsel.nombre);
-  const nav = max ? `<div class="fr-nav"><button class="fr-b" data-d="-1" aria-label="Día anterior"${diaSel ? '' : ' disabled'}>‹</button><span aria-live="polite">${esc(diaSel < 3 ? NOM_DIA[diaSel] : dsel.nombre)}</span><button class="fr-b" data-d="1" aria-label="Día siguiente"${diaSel < max ? '' : ' disabled'}>›</button></div>` : '';
-  const resumen = diaSel ? `<div class="ahora"><div class="ic">${esc(dsel.icono)}</div><div class="t">${Math.round(dsel.max)}°</div>
-    <div class="x"><b>${esc(dsel.texto)}</b><br>mín ${Math.round(dsel.min)}° · lluvia ${Math.round(dsel.lluvia || 0)}%</div></div>` : `<div class="ahora"><div class="ic">${esc(a.icono)}</div><div class="t">${Math.round(a.temp)}°</div>
-    <div class="x"><b>${esc(a.texto)}</b><br>${esc(r.lugar.nombre)} · viento ${Math.round(a.viento)} km/h</div></div>`;
-  const pts = (diaSel ? dsel.puntos : r.puntos) || [], serie = pts.length > 1 ? pts : hs; // cada 15 min si Open-Meteo los dio; si no, por horas
-  t.innerHTML = nav + (serie.length > 1 ? franja(serie, ah, a.temp, diaSel ? horasDe(0) : null, nombre) : '') + resumen + detalles(hs) + `
-    <div class="dias">${r.dias.slice(0, 5).map(d => `<div>${esc(String(d.nombre).slice(0, 3))}<span class="ic">${esc(d.icono)}</span><span>${Math.round(d.max)}° <small>${Math.round(d.min)}°</small></span><span class="ll">${Math.round(d.lluvia || 0)}%</span></div>`).join('')}</div>`;
-}
+let meteo = null, meteoT = 0, diaSel = 0, ciudadSel = ''; // diaSel: día que muestra el gráfico (0 = hoy, 1 = mañana…); el dibujo está en graficos.js
+try { ciudadSel = localStorage.getItem('ciudad') || ''; } catch {}
+function pintaMeteo() { const o = htmlCiudades(meteo, ciudadSel, diaSel, meteoT, true); diaSel = o.dia; ciudadSel = o.sel; $('tiempo').innerHTML = o.html; }
 
 // ---- correo
 function fechaCorta(iso) {
@@ -423,27 +384,7 @@ $('nt-lista').addEventListener('click', e => {
 });
 
 // ---- sistema
-const barra = (n, v, txt, inv) => `<div class="barra">${n} · ${txt}<progress max="100" value="${Math.min(100, Math.max(0, Math.round(v)))}" class="${(inv ? v < 15 : v > 85) ? 'alto' : ''}"></progress></div>`;
-const iconoDisp = n => /mando|controller|gamepad|xbox|dualsense|dualshock|joy-?con/i.test(n) ? '🎮' : /mouse|rat[oó]n|mx master|m[x]? anywhere/i.test(n) ? '🖱️' : /keyboard|teclado|mx keys|k\d{2,3}/i.test(n) ? '⌨️' : /buds|airpods|head|auric|wh-|speaker|altavoz|earbud/i.test(n) ? '🎧' : '🔋';
-function pintaSistema() {
-  let h = '';
-  if (sis) {
-    const gb = b => (b / 1e9).toFixed(1);
-    h += barra('CPU', sis.cpu, Math.round(sis.cpu) + '%');
-    h += barra('RAM', sis.ramUsada / sis.ramTotal * 100, `${gb(sis.ramUsada)}/${gb(sis.ramTotal)} GB`);
-    const u = sis.discoTotal - sis.discoLibre;
-    h += barra('Disco C:', u / sis.discoTotal * 100, `${Math.round(sis.discoLibre / 1e9)} GB libres`);
-  }
-  if (sis) {
-    h += '<h3 class="sub">Dispositivos</h3>';
-    const ds = sis.dispositivos;
-    if (!ds) h += '<div class="vacio">Buscando dispositivos…</div>';
-    else if (!ds.length) h += '<div class="vacio">Ningún dispositivo con batería detectado. Los que usan receptor USB propio (2,4 GHz) no la comunican a Windows.</div>';
-    else h += ds.map(d => barra(iconoDisp(d.nombre) + ' ' + esc(d.nombre), d.nivel, (d.aprox ? '≈ ' : '') + d.nivel + '%', true)).join('');
-  }
-  if (bateria) h += barra('Batería' + (bateria.charging ? ' ⚡' : ''), bateria.level * 100, Math.round(bateria.level * 100) + '%', true);
-  $('sistema').innerHTML = '<div class="barras">' + h + '</div>';
-}
+const pintaSistema = () => { $('sistema').innerHTML = htmlSistema(sis, bateria); };
 if (navigator.getBattery) navigator.getBattery().then(b => { bateria = b; b.onlevelchange = b.onchargingchange = pintaSistema; pintaSistema(); }).catch(() => {});
 
 // ---- IPC
@@ -459,6 +400,8 @@ api.on('actualizacion', a => { // pastilla «Nueva versión X» (solo si hay y n
 });
 $('nueva-ok').onclick = () => api.instalarActualizacion(); $('nueva-tarde').onclick = () => api.masTarde();
 api.on('sistema', s => { sis = s; pintaSistema(); });
+document.querySelectorAll('.wd').forEach(b => b.onclick = () => api.widget(b.dataset.w, b.getAttribute('aria-pressed') !== 'true')); // widgets del escritorio
+api.on('widgets', l => document.querySelectorAll('.wd').forEach(b => { const on = Array.isArray(l) && l.includes(b.dataset.w); b.setAttribute('aria-pressed', on); b.textContent = on ? '🖥️ Quitar widget' : '🖥️ Widget'; }));
 api.on('estado', e => { document.body.classList.toggle('abierto', e.abierto); $('pin').classList.toggle('on', e.fijado); $('pin').setAttribute('aria-pressed', !!e.fijado); if (e.abierto) reloj(); });
 reloj(); pintaAgenda();
 setInterval(reloj, 1000);

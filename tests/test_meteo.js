@@ -32,3 +32,11 @@ assert.strictEqual(r.dias.length, 3);
 const sin = armar({ ...j, minutely_15: undefined }, { nombre: 'X', lat: 1, lon: 2 }, new Date(2026, 10, 16, 21, 30));
 assert.deepStrictEqual(sin.puntos, []); assert.strictEqual(sin.horas.length, 24);
 console.log('test_meteo OK');
+
+// búsqueda de ciudades: filtra lo no válido, recorta y compone el detalle
+{
+  const { parsearBusqueda } = require('../meteo');
+  const g = parsearBusqueda({ results: [{ name: 'Alcalá de Henares', latitude: 40.48206, longitude: -3.36352, admin1: 'Comunidad de Madrid', country: 'España' }, { name: 'Sin coords' }, { name: 'Madrid', latitude: '40.4165', longitude: -3.7026, country: 'España' }] });
+  assert.deepStrictEqual(g, [{ nombre: 'Alcalá de Henares', detalle: 'Comunidad de Madrid, España', lat: 40.4821, lon: -3.3635 }, { nombre: 'Madrid', detalle: 'España', lat: 40.4165, lon: -3.7026 }]);
+  assert.deepStrictEqual(parsearBusqueda({}), []); assert.deepStrictEqual(parsearBusqueda(null), []);
+}

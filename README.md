@@ -13,10 +13,12 @@ Gestor-Alarma: panel lateral para Windows (Electron), fijo al **borde derecho** 
 
 **De dónde sale cada dato**
 - Hora y fecha: el reloj del PC.
-- Tiempo: `meteo.js` (cada 30 min; el lugar se guarda en `ajustes.json`). El gráfico del día muestra un punto cada 15 min cuando Open-Meteo lo da, y debajo viento, humedad, sensación, UV, presión y nubes.
+- Tiempo: `meteo.js` (cada 30 min). **Varias ciudades** (hasta 6, guardadas en `ajustes.lugares`): «＋ Ciudad» busca por nombre (geocodificación de Open-Meteo) y las ciudades salen como pestañitas sobre el gráfico; la × de la elegida la quita. La primera vez se usa la ciudad de la IP. El widget del Tiempo también tiene las pestañitas (la elección es suya). El gráfico del día muestra un punto cada 15 min cuando Open-Meteo lo da, y debajo viento, humedad, sensación, UV, presión y nubes.
 - Correo y agenda (hoy y mañana): `correo.js` + `outlook.ps1` con Outlook clásico abierto; cada 60 s y al abrir el panel. Clic en un correo lo abre; si Outlook está cerrado hay botón para abrirlo. «Marcar todo el buzón como leído» cuenta los no leídos de todas las carpetas y pide confirmación con ese número.
 - Alarmas: el motor `alarmas.js` (el antiguo Gestor-Alarmas, ya integrado); ver «Pestaña Alarmas».
 - Sistema: `sistema.js` (CPU, RAM, disco C:) cada 2 s solo con el panel abierto; batería con `navigator.getBattery()`.
+
+**Widgets en el escritorio:** el gráfico del **Tiempo** (con sus flechas de día) y las barras de **Sistema** se pueden sacar a una ventanita propia (`widget.html`/`widget.js`, dibujo compartido en `graficos.js`). Botón «🖥️ Widget» en esas pestañas, o bandeja → «Widgets en el escritorio». Se arrastran para colocarlos (también a otro monitor), la **×** que sale al pasar el ratón los quita, no van «siempre encima» (se quedan con las demás ventanas), se esconden en pantalla completa y se recuerdan (posición y si estaban abiertos) en `ajustes.json`. El de Sistema mide cada 2 s mientras esté abierto.
 
 Datos del panel en `%APPDATA%\panel`: `ajustes.json` y `panel.log`.
 

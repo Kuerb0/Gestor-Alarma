@@ -87,4 +87,18 @@ async function leer(lugarGuardado) {
   } catch (e) { return { ok: false, motivo: e.message || 'error' }; }
 }
 
-module.exports = { leer, wmo, armar };
+// Búsqueda de ciudades (geocodificación de Open-Meteo, sin clave): `parsearBusqueda` es pura y `buscar` nunca lanza
+function parsearBusqueda(j) {
+  return ((j && j.results) || []).filter(x => x && typeof x.name === 'string' && Number.isFinite(Number(x.latitude)) && Number.isFinite(Number(x.longitude)))
+    .slice(0, 6).map(x => ({ nombre: x.name.slice(0, 60), detalle: [x.admin1, x.country].filter(y => typeof y === 'string' && y).join(', ').slice(0, 80), lat: Number(Number(x.latitude).toFixed(4)), lon: Number(Number(x.longitude).toFixed(4)) }));
+}
+async function buscar(texto) {
+  try {
+    const t = String(texto || '').trim().slice(0, 80); if (t.length < 2) return { ok: true, lugares: [] };
+    const resp = await fetch('https://geocoding-api.open-meteo.com/v1/search?count=6&language=es&format=json&name=' + encodeURIComponent(t), { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) return { ok: false, motivo: 'http_' + resp.status };
+    return { ok: true, lugares: parsearBusqueda(await resp.json()) };
+  } catch (e) { return { ok: false, motivo: e.message || 'error' }; }
+}
+
+module.exports = { leer, wmo, armar, buscar, parsearBusqueda };

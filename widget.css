@@ -1,0 +1,28 @@
+/* Widget del escritorio: ventana transparente. Cuatro estilos (data-estilo en #w; el botón 🎨 los recorre): cristal (por defecto), fino, flotante y sólido.
+   La legibilidad sobre cualquier fondo de pantalla la dan la sombra del texto (--ts) y, en cristal/sólido, un tinte suave. */
+:root { --wfondo: rgba(18,22,32,.28); --wborde: rgba(255,255,255,.22); --vidrio: rgba(255,255,255,.05); --vidrio-h: rgba(255,255,255,.14); --b1: rgba(255,255,255,.3); --b2: rgba(255,255,255,.1); --sombra: rgba(0,0,0,.28); --brillo: rgba(255,255,255,.1); --ts: rgba(0,0,0,.55); --sec: rgba(255,255,255,.78); }
+@media (prefers-color-scheme: light) { :root { --wfondo: rgba(255,255,255,.34); --wborde: rgba(255,255,255,.7); --vidrio: rgba(255,255,255,.22); --vidrio-h: rgba(255,255,255,.55); --b1: rgba(255,255,255,.9); --b2: rgba(255,255,255,.4); --sombra: rgba(30,40,70,.16); --brillo: rgba(255,255,255,.5); --ts: rgba(255,255,255,.75); --sec: rgba(20,22,26,.72); } }
+body { padding: 10px; height: auto; overflow: hidden; }
+#w { position: relative; padding: 12px; border-radius: 28px; background: linear-gradient(180deg, var(--brillo), transparent 28%), var(--wfondo); box-shadow: 0 8px 24px var(--sombra), inset 0 0 0 1px var(--wborde); -webkit-app-region: drag; cursor: default; transition: background .2s, box-shadow .2s; }
+#w button { -webkit-app-region: no-drag; }
+#w-bar { position: absolute; top: 8px; right: 8px; z-index: 3; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+#w:hover #w-bar, #w-bar:focus-within { opacity: 1; }
+#w-bar button { width: 24px; height: 24px; border-radius: 12px; font-size: 13px; line-height: 1; }
+#w .barras { gap: 8px; } #w .barra { padding: 9px 12px; }
+#w .fr-nav { padding-right: 52px; } /* deja sitio a los botones */
+#w.sis #w-c { padding-top: 14px; }
+/* legibilidad sin fondo: sombra en textos y en el dibujo SVG */
+#w-c { text-shadow: 0 1px 3px var(--ts), 0 0 8px var(--ts); }
+.fr-g { filter: drop-shadow(0 1px 2px var(--ts)); }
+.barra progress { box-shadow: 0 1px 3px var(--ts); }
+#w .barra progress, #w .barra progress::-webkit-progress-bar { background: rgba(128,128,128,.25); }
+
+/* fino: casi solo el contorno */
+#w[data-estilo=fino] { --wfondo: rgba(18,22,32,.10); --vidrio: rgba(255,255,255,0); --brillo: rgba(255,255,255,.04); --sombra: rgba(0,0,0,.12); }
+@media (prefers-color-scheme: light) { #w[data-estilo=fino] { --wfondo: rgba(255,255,255,.14); } }
+/* flotante: sin marco ni fondo, las tarjetas flotan sueltas sobre el escritorio */
+#w[data-estilo=flotante] { background: none; box-shadow: none; --vidrio: rgba(18,22,32,.22); --brillo: rgba(255,255,255,.08); }
+@media (prefers-color-scheme: light) { #w[data-estilo=flotante] { --vidrio: rgba(255,255,255,.3); } }
+/* sólido: el de antes */
+#w[data-estilo=solido] { --wfondo: rgba(20,24,34,.8); --vidrio: rgba(255,255,255,.07); --sombra: rgba(0,0,0,.4); --ts: rgba(0,0,0,0); }
+@media (prefers-color-scheme: light) { #w[data-estilo=solido] { --wfondo: rgba(250,252,255,.82); --vidrio: rgba(255,255,255,.55); } }

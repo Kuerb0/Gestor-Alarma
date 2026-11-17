@@ -71,7 +71,7 @@ h2 { font-size: 12px; font-weight: 600; color: var(--sec); text-transform: upper
 .franja { display: block; border-radius: 24px; padding: 8px 4px 2px; }
 .fr-g { display: block; width: 100%; height: auto; overflow: visible; }
 .g1 { stop-color: var(--acento); stop-opacity: .55; } .g2 { stop-color: var(--acento); stop-opacity: 0; }
-.fr-a { fill: url(#gr); } .fr-l { fill: none; stroke: var(--acento); stroke-width: 2; stroke-linecap: round; filter: drop-shadow(0 0 4px var(--ac-v)); }
+.fr-a { fill: url(#gr); } .fr-l { fill: none; stroke: var(--acento); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px var(--ac-v)); }
 .fr-e { stroke: var(--b2); stroke-width: 1; } .fr-ya { stroke: var(--acento); stroke-width: 1.2; stroke-linecap: round; }
 .fr-ll { fill: var(--ac-t); opacity: .6; } .pas { opacity: .45; } .fr-ll.pas { opacity: .3; }
 .fr-p { fill: var(--acento); } .fr-k { fill: var(--txt); stroke: var(--acento); stroke-width: 2; }
@@ -208,7 +208,9 @@ select.campo option { background: #2b2f38; color: #fff; }
 ::-webkit-scrollbar { width: 6px; height: 3px; } ::-webkit-scrollbar-thumb { background: var(--b1); border-radius: 3px; } ::-webkit-scrollbar-track { background: transparent; }
 @media (prefers-reduced-motion: reduce) { *, ::before, ::after { transition: none !important; } .globo.suena, .fila.sonando { animation: none; } }
 /* nuevo evento (Agenda) */
-#p-agenda > h2 { justify-content: space-between; } #p-agenda > h2 .btn-sec { text-transform: none; letter-spacing: 0; }
+#p-agenda > h2, #p-tiempo > h2, #p-sistema > h2 { justify-content: space-between; } #p-agenda > h2 .btn-sec, .wd { text-transform: none; letter-spacing: 0; }
+.wd[aria-pressed=true] { background: var(--ac-v); font-weight: 600; } /* widget ya en el escritorio: pulsar lo quita */
+#p-tiempo > h2 + #tiempo, #p-sistema > h2 + #sistema { margin-top: 6px; }
 .diah { cursor: pointer; border-radius: 6px; width: max-content; } .diah:hover { color: var(--txt); } .diah:focus-visible, button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
 #ev-form { display: grid; gap: 8px; margin-bottom: 8px; } #ev-form[hidden], #ev-lugar[hidden], #ev-chips[hidden], #ev-mas[hidden] { display: none; }
 #ev-form label { color: var(--sec); font-size: 11px; display: grid; gap: 3px; }
@@ -228,3 +230,15 @@ select.campo option { background: #2b2f38; color: #fff; }
 
 #c-ocultar[aria-checked=true] { background: var(--ac-v); box-shadow: inset 0 0 0 1px var(--acento), 0 0 12px var(--ac-v); font-weight: 600; }
 .barras .sub { margin: 6px 4px -4px; font-size: 12px; font-weight: 600; color: var(--sec); letter-spacing: .04em; text-transform: uppercase; }
+
+/* varias ciudades del tiempo */
+.hb { display: flex; gap: 6px; }
+.ciudades { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ciu { display: inline-flex; align-items: center; border-radius: 999px; background: var(--vidrio); box-shadow: inset 0 0 0 1px var(--b2); }
+.ciu.on { background: var(--ac-v); box-shadow: inset 0 0 0 1px var(--acento); }
+.ciu button { width: auto; height: 26px; padding: 0 11px; border-radius: 999px; font-size: 12px; color: var(--txt); }
+.ciu.on .ciu-n { font-weight: 600; } .ciu-q { padding: 0 8px 0 2px !important; font-size: 15px !important; color: var(--sec) !important; }
+#ci-form { margin-bottom: 8px; } #ci-form label { display: block; font-size: 12px; color: var(--sec); }
+#ci-res { margin-top: 6px; display: grid; gap: 4px; }
+.ci-op { width: 100%; height: auto; padding: 7px 10px; text-align: left; border-radius: 14px; font-size: 13px; color: var(--txt); background: var(--vidrio-h); }
+.ci-op small { display: block; color: var(--sec); font-size: 11px; }

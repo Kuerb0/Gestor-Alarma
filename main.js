@@ -6,6 +6,7 @@ const Alarmas = require('./alarmas'); // motor del antiguo Gestor-Alarmas (overl
 const HUMO = process.argv.includes('--humo'); // prueba: userData temporal, datos inventados, captura y salir
 const ICONO = path.join(__dirname, 'assets', 'icon.png');
 const PW = 380; // ancho del panel
+const widgets = new Map(); // widgets del escritorio abiertos: tipo ('tiempo' | 'sistema') -> BrowserWindow
 let AJUSTES, ajustes = { fijado: false, iniciarConWindows: true, lugar: null }, win, raya, tray, anim = 0, acento = '#4a9eff';
 nativeTheme.themeSource = HUMO && process.env.PANEL_TEMA === 'light' ? 'light' : 'system'; // el CSS sigue prefers-color-scheme
 let diasAgenda = 7, cerradoDesde = 0, extraHumo = [], abierto = false, fuera = 0, ultCorreo = 0, leyendoCorreo = false, tSistema = null, bueno = {}, cache = {};
@@ -26,7 +27,7 @@ const cargar = n => { try { return require('./' + n); } catch (e) { log('sin mó
 const Correo = HUMO ? null : cargar('correo'), Meteo = HUMO ? null : cargar('meteo'), Sistema = HUMO ? null : cargar('sistema');
 
 const guardarAjustes = () => { try { fs.writeFileSync(AJUSTES, JSON.stringify(ajustes)); } catch (e) { log('ajustes ' + e.message); } };
-const enviar = (canal, dato) => { cache[canal] = dato; win && !win.isDestroyed() && win.webContents.send(canal, dato); if (canal === 'correo') agendaAlOverlay(); };
+const enviar = (canal, dato) => { cache[canal] = dato; win && !win.isDestroyed() && win.webContents.send(canal, dato); widgets.forEach(w => !w.isDestroyed() && w.webContents.send(canal, dato)); if (canal === 'correo') agendaAlOverlay(); };
 // agenda para el overlay: pinta como rectángulo el evento en curso (con hora) y colorea las alarmas
 const eventosOverlay = () => ((cache.correo && cache.correo.agenda) || []).map(e => ({ titulo: e.titulo, inicio: e.inicio, fin: e.fin, todoDia: e.todoDia, color: e.color })); // también los de todo el día: dan color a las alarmas del mismo nombre
 function agendaAlOverlay() { const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) ov.webContents.send('agenda', eventosOverlay()); }
@@ -55,13 +56,38 @@ async function leerCorreo() { // nunca dos lecturas de Outlook a la vez; si lleg
   catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
   finally { leyendoCorreo = false; ultCorreo = Date.now(); if (pendienteCorreo) { pendienteCorreo = false; leerCorreo(); } }
 }
+// Ciudades del tiempo: ajustes.lugares (hasta 6). `meteo` viaja como { lista: [{ clave, nombre, r }] } con el resultado de cada una.
+const MAX_LUGARES = 6;
+const claveLugar = l => `${l.nombre}|${Number(l.lat).toFixed(2)}|${Number(l.lon).toFixed(2)}`;
+const lugares = () => Array.isArray(ajustes.lugares) ? ajustes.lugares : ajustes.lugar ? [ajustes.lugar] : []; // `lugar` = formato anterior (una sola ciudad)
+const lugarValido = l => l && typeof l.nombre === 'string' && l.nombre.trim() && Number.isFinite(l.lat) && Number.isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180;
+const limpiarLugar = l => ({ nombre: l.nombre.trim().slice(0, 60), lat: Number(l.lat.toFixed(4)), lon: Number(l.lon.toFixed(4)) });
+let leyendoMeteo = false;
 async function leerMeteo() {
-  if (!Meteo) return;
-  try { const r = await Meteo.leer(ajustes.lugar || undefined); if (r.ok && !ajustes.lugar) { ajustes.lugar = r.lugar; guardarAjustes(); } conservar('meteo', r); }
-  catch (e) { log('meteo ' + e.message); conservar('meteo', { ok: false, motivo: 'error' }); }
+  if (!Meteo || leyendoMeteo) return;
+  leyendoMeteo = true;
+  try {
+    if (!lugares().length) { // primera vez: ciudad por la IP
+      const r0 = await Meteo.leer(undefined);
+      if (!r0.ok) { enviar('meteo', { lista: [{ clave: '?', nombre: '', r: r0 }] }); return; }
+      ajustes.lugares = [r0.lugar]; delete ajustes.lugar; guardarAjustes();
+    }
+    const ls = lugares();
+    const rs = await Promise.all(ls.map(l => Meteo.leer(l)));
+    enviar('meteo', { lista: ls.map((l, i) => {
+      const k = claveLugar(l), r = rs[i];
+      if (r && r.ok) bueno['meteo:' + k] = r;
+      return { clave: k, nombre: l.nombre, r: r && r.ok ? r : bueno['meteo:' + k] ? { ...bueno['meteo:' + k], obsoleto: r && r.motivo || 'error' } : r || { ok: false, motivo: 'error' } };
+    }) });
+  } catch (e) { log('meteo ' + e.message); }
+  finally { leyendoMeteo = false; }
 }
 async function leerSistema() { if (!Sistema) return; try { enviar('sistema', await Sistema.leer()); } catch (e) { log('sistema ' + e.message); } }
-const actualizar = () => { leerCorreo(); leerMeteo(); if (abierto) leerSistema(); };
+const actualizar = () => { leerCorreo(); leerMeteo(); if (abierto || widgets.has('sistema')) leerSistema(); };
+function vigilarSistema() { // CPU/RAM/disco cada 2 s solo si alguien los está mirando: el panel abierto o el widget de Sistema
+  clearInterval(tSistema); tSistema = null;
+  if (abierto || widgets.has('sistema')) { leerSistema(); tSistema = setInterval(leerSistema, 2000); }
+}
 
 // ---- ventana: acrílico nativo (cubre toda la ventana), así que escondida se oculta; la «raya» del borde es otra ventanita aparte
 const area = () => screen.getPrimaryDisplay().workArea;
@@ -106,8 +132,8 @@ function poner(v) { // abre/cierra de verdad
   if (raya && !raya.isDestroyed()) v ? raya.hide() : raya.showInactive();
   estado();
   if (!v) cerradoDesde = Date.now(); else if (diasAgenda > 7 && Date.now() - cerradoDesde > 6e5) { diasAgenda = 7; if (!HUMO) leerCorreo(); } // tras 10 min cerrado, la agenda vuelve a 7 días
-  clearInterval(tSistema); tSistema = null;
-  if (v) { leerSistema(); tSistema = setInterval(leerSistema, 2000); if (!HUMO && Date.now() - ultCorreo > 15e3) leerCorreo(); }
+  vigilarSistema();
+  if (v && !HUMO && Date.now() - ultCorreo > 15e3) leerCorreo();
 }
 // tono de Windows: el acento va al panel y al overlay (el claro/oscuro lo resuelve el CSS con prefers-color-scheme)
 function enviarTema() {
@@ -142,6 +168,7 @@ function aplicarCompleta() {
   if (completa && abierto && !ajustes.fijado) poner(false);
   if (raya && !raya.isDestroyed()) completa || abierto ? raya.hide() : raya.showInactive();
   const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) completa ? ov.hide() : ov.showInactive();
+  widgets.forEach(w => !w.isDestroyed() && (completa ? w.hide() : w.showInactive()));
   pintarAct();
 }
 function vigilarCompleta() {
@@ -152,6 +179,44 @@ function vigilarCompleta() {
   } catch (e) { log('vigía ' + e.message); }
 }
 app.on('will-quit', () => { try { vigia && vigia.kill(); } catch {} });
+
+// ---- widgets del escritorio: la gráfica del Tiempo o la de Sistema en su propia ventanita transparente, arrastrable y sin ser «siempre encima»
+// (se queda con las demás ventanas). Posición y «abierto» se guardan en ajustes.widgets y se restauran al arrancar.
+const WIDGETS = { tiempo: { ancho: 380, nombre: 'Tiempo' }, sistema: { ancho: 320, nombre: 'Sistema' } };
+const pintarWidgets = () => { enviar('widgets', [...widgets.keys()]); tray && tray.setContextMenu(menu()); };
+function posicionWidget(tipo) { // la guardada si sigue dentro de alguna pantalla; si no, esquina superior izquierda del monitor principal
+  const g = ajustes.widgets && ajustes.widgets[tipo], a = area(), w = WIDGETS[tipo].ancho;
+  if (g && Number.isFinite(g.x) && Number.isFinite(g.y) && screen.getAllDisplays().some(d => { const b = d.workArea; return g.x + 60 > b.x && g.x < b.x + b.width - 60 && g.y >= b.y && g.y < b.y + b.height - 60; })) return { x: Math.round(g.x), y: Math.round(g.y) };
+  return { x: a.x + 40 + (tipo === 'sistema' ? w + 20 : 0), y: a.y + 60 };
+}
+function guardarWidget(tipo, abiertoW) {
+  const w = widgets.get(tipo), b = w && !w.isDestroyed() ? w.getBounds() : ajustes.widgets && ajustes.widgets[tipo];
+  ajustes.widgets = { ...ajustes.widgets, [tipo]: { ...(ajustes.widgets && ajustes.widgets[tipo]), x: b ? b.x : undefined, y: b ? b.y : undefined, abierto: abiertoW } }; guardarAjustes();
+}
+function ponerWidget(tipo, v) {
+  if (!WIDGETS[tipo]) return;
+  const w0 = widgets.get(tipo);
+  if (!v) { if (!w0) return; guardarWidget(tipo, false); widgets.delete(tipo); if (!w0.isDestroyed()) w0.destroy(); pintarWidgets(); vigilarSistema(); return; }
+  if (w0 && !w0.isDestroyed()) return;
+  const p = posicionWidget(tipo);
+  const w = new BrowserWindow({ ...p, width: WIDGETS[tipo].ancho, height: 200, frame: false, transparent: true, hasShadow: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, show: false, icon: ICONO,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false } });
+  widgets.set(tipo, w);
+  w.loadFile('widget.html', { query: { tipo, estilo: (ajustes.widgets && ajustes.widgets[tipo] && ajustes.widgets[tipo].estilo) || 'cristal' } });
+  w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); });
+  w.once('ready-to-show', () => { if (!completa) w.showInactive(); });
+  w.on('moved', () => { if (widgets.get(tipo) === w) guardarWidget(tipo, true); });
+  w.on('closed', () => { if (widgets.get(tipo) === w) { widgets.delete(tipo); pintarWidgets(); } });
+  guardarWidget(tipo, true); pintarWidgets(); vigilarSistema();
+}
+const tipoWidget = wc => [...widgets].find(([, w]) => !w.isDestroyed() && w.webContents === wc)?.[0];
+ipcMain.on('widget:poner', (_, tipo, v) => ponerWidget(tipo, v === true));
+ipcMain.on('widget:estilo', (e, est) => { const t = tipoWidget(e.sender); if (!t || !['cristal', 'fino', 'flotante', 'solido'].includes(est)) return; ajustes.widgets = { ...ajustes.widgets, [t]: { ...(ajustes.widgets && ajustes.widgets[t]), estilo: est } }; guardarAjustes(); });
+ipcMain.on('widget:cerrar', e => { const t = tipoWidget(e.sender); if (t) ponerWidget(t, false); });
+ipcMain.on('widget:alto', (e, h) => { // el widget mide su contenido; la ventana se ajusta (80–900 px)
+  const t = tipoWidget(e.sender); if (!t || !Number.isFinite(h)) return;
+  const w = widgets.get(t), b = w.getBounds(); w.setBounds({ x: b.x, y: b.y, width: WIDGETS[t].ancho, height: Math.round(Math.min(900, Math.max(80, h))) });
+});
 
 // ---- actualización: pastilla en el panel y entradas en la bandeja; en pantalla completa no se enseña nada nuevo
 let nueva = null, estAct = 'disponible', msgAct = '', ocupado = false;
@@ -208,6 +273,7 @@ const menu = () => Menu.buildFromTemplate([
     { label: '2 horas', click: () => silenciar(120) },
     ...(silenciando() ? [{ type: 'separator' }, { label: 'Quitar', click: () => silenciar(0) }] : []),
   ] },
+  { label: 'Widgets en el escritorio', submenu: Object.entries(WIDGETS).map(([t, w]) => ({ label: w.nombre, type: 'checkbox', checked: widgets.has(t), click: i => ponerWidget(t, i.checked) })) },
   { label: 'Iniciar con Windows', type: 'checkbox', checked: !!ajustes.iniciarConWindows, click: i => { ajustes.iniciarConWindows = i.checked; guardarAjustes(); aplicarInicio(); } },
   { label: 'Salir', click: () => app.quit() },
 ]);
@@ -271,6 +337,29 @@ ipcMain.handle('agenda:borrar', async (_, ev) => {
   const r = await Correo.borrarEvento(ev); leerCorreo(); return r; // relee siempre: si falló, la agenda vuelve a lo que hay en Outlook
 });
 
+// ---- ciudades del tiempo (buscar, añadir, quitar)
+ipcMain.handle('lugares:buscar', async (_, texto) => {
+  if (typeof texto !== 'string') return { ok: false, motivo: 'texto no válido' };
+  if (HUMO) return { ok: true, lugares: /alcal/i.test(texto) ? [{ nombre: 'Alcalá de Henares', detalle: 'Comunidad de Madrid, España', lat: 40.4821, lon: -3.3635 }, { nombre: 'Alcalá la Real', detalle: 'Andalucía, España', lat: 37.4608, lon: -3.9235 }] : [] };
+  return Meteo ? Meteo.buscar(texto) : { ok: false, motivo: 'error' };
+});
+ipcMain.handle('lugares:anadir', (_, l) => {
+  if (!lugarValido(l)) return { ok: false, motivo: 'ciudad no válida' };
+  const nuevo = limpiarLugar(l), ls = lugares();
+  if (ls.some(x => claveLugar(x) === claveLugar(nuevo))) return { ok: true };
+  if (ls.length >= MAX_LUGARES) return { ok: false, motivo: 'máximo ' + MAX_LUGARES + ' ciudades' };
+  ajustes.lugares = [...ls, nuevo]; delete ajustes.lugar; guardarAjustes();
+  if (HUMO) { const c = cache.meteo, base = c && c.lista && c.lista[0]; if (base) { c.lista.push({ clave: claveLugar(nuevo), nombre: nuevo.nombre, r: { ...base.r, lugar: { ...nuevo } } }); enviar('meteo', c); } } else leerMeteo();
+  return { ok: true };
+});
+ipcMain.handle('lugares:quitar', (_, clave) => {
+  const ls = lugares();
+  if (typeof clave !== 'string' || ls.length < 2 || !ls.some(x => claveLugar(x) === clave)) return { ok: false, motivo: 'no se puede quitar' };
+  ajustes.lugares = ls.filter(x => claveLugar(x) !== clave); delete ajustes.lugar; guardarAjustes();
+  if (HUMO) { const c = cache.meteo; if (c && c.lista) { c.lista = c.lista.filter(x => x.clave !== clave); enviar('meteo', c); } } else leerMeteo();
+  return { ok: true };
+});
+
 // ---- notas rápidas: una lista en %APPDATA%\panel\notas.json; cada cambio manda la lista entera
 const NOTAS = () => path.join(app.getPath('userData'), 'notas.json');
 function leerNotas() {
@@ -307,6 +396,7 @@ app.whenReady().then(async () => {
   setInterval(sondear, 80);
   if (HUMO) return humo();
   vigilarCompleta();
+  Object.keys(WIDGETS).forEach(t => ajustes.widgets && ajustes.widgets[t] && ajustes.widgets[t].abierto && ponerWidget(t, true));
   estado(); if (ajustes.fijado) abrir();
   actualizar();
   setTimeout(() => buscar(false), 20e3); setInterval(() => buscar(false), 6 * 36e5);
@@ -341,11 +431,13 @@ async function humo() {
   const puntos = (i, horas) => Array.from({ length: 96 }, (_, q) => { const k = Math.floor(q / 4), hd = q / 4, f = horas[k] || horas[0]; return { hora: String(k).padStart(2, '0') + ':' + String(q % 4 * 15).padStart(2, '0'), hd, temp: Math.round(f.temp + (q % 4) * .25), lluvia: (q * 3 + i * 7) % 60, icono: q % 4 ? '' : f.icono }; });
   const hHoy = Array.from({ length: 24 }, (_, k) => hora(k, Math.round(13 + 6 * Math.cos((k - 15) / 24 * 2 * Math.PI)), 0));
   const dHoras = nd.map((n, i) => Array.from({ length: 24 }, (_, k) => hora(k, Math.round(13 + i * 1.5 + 6 * Math.cos((k - 15) / 24 * 2 * Math.PI)), i)));
-  enviar('meteo', { ok: true, lugar: { nombre: 'Madrid', lat: 40.4, lon: -3.7, categoria: 'Personal', color: '#a06bff' }, actual: { temp: 18, codigo: 1, texto: 'Mayormente despejado', icono: '🌤️', viento: 14, humedad: 58, sens: 17, presion: 1016, nubes: 30 },
+  ajustes.lugares = [{ nombre: 'Madrid', lat: 40.4, lon: -3.7 }];
+  const meteoHumo = { ok: true, lugar: { nombre: 'Madrid', lat: 40.4, lon: -3.7 }, actual: { temp: 18, codigo: 1, texto: 'Mayormente despejado', icono: '🌤️', viento: 14, humedad: 58, sens: 17, presion: 1016, nubes: 30 },
     horas: hHoy, puntos: puntos(0, hHoy),
     ahora: new Date().getHours() + new Date().getMinutes() / 60,
     dias: nd.map((n, i) => ({ fecha: iso(ahora + i * d).slice(0, 10), nombre: n, max: 20 + i, min: 9 + i, icono: ic[i], texto: 'Soleado', lluvia: i * 15,
-      horas: dHoras[i], puntos: puntos(i, dHoras[i]) })) });
+      horas: dHoras[i], puntos: puntos(i, dHoras[i]) })) };
+  enviar('meteo', { lista: [{ clave: claveLugar(meteoHumo.lugar), nombre: 'Madrid', r: meteoHumo }] });
   Alarmas.datosHumo();
   enviar('sistema', { cpu: 23, ramUsada: 9.5e9, ramTotal: 16e9, discoLibre: 180e9, discoTotal: 500e9, dispositivos: [{ nombre: 'Ratón', nivel: 72, aprox: false }, { nombre: 'Mando Xbox', nivel: 60, aprox: true }, { nombre: 'Teclado', nivel: 15, aprox: false }] });
   nueva = { version: '9.9.9' }; pintarAct(); // pastilla de «versión nueva» inventada
@@ -430,6 +522,43 @@ async function humo() {
   await captura('panel-tiempo-manana', win);
   await js(win, `document.querySelector('.fr-b[data-d="-1"]').click()`); await esp(100);
   if (await n(win, '.fr-hoy') !== 0 || await n(win, '.fr-ya') !== 1) fallos.push('volver a hoy: gráfico incorrecto');
+  // widgets del escritorio: se abren, pintan el mismo gráfico/barras que la pestaña, se ajustan de alto y se quitan con la ×
+  ponerWidget('tiempo', true); ponerWidget('sistema', true); await esp(1200);
+  const wt = widgets.get('tiempo'), ws = widgets.get('sistema');
+  if (!wt || !ws) fallos.push('widgets: no se abren');
+  else {
+    if (await n(wt, '.fr-g') !== 1) fallos.push('widget Tiempo: sin gráfico');
+    if (await n(ws, '.barra') < 3) fallos.push('widget Sistema: faltan barras');
+    if (wt.getBounds().height <= 100 || ws.getBounds().height <= 100) fallos.push('widgets: el alto no se ajusta al contenido');
+    await js(wt, `document.querySelector('.fr-b[data-d="1"]').click()`); await esp(150);
+    if (await n(wt, '.fr-hoy') !== 1) fallos.push('widget Tiempo: las flechas de día no funcionan');
+    for (const est of ['cristal', 'fino', 'flotante', 'solido']) {
+      await js(wt, `document.getElementById('w').dataset.estilo !== '${est}' && document.getElementById('w-e').click()`); await js(ws, `document.getElementById('w').dataset.estilo !== '${est}' && document.getElementById('w-e').click()`); await esp(300);
+      await captura('widget-tiempo-' + est, wt); await captura('widget-sistema-' + est, ws);
+    }
+    if ((ajustes.widgets.tiempo || {}).estilo !== 'solido') fallos.push('widget: el estilo no se guarda');
+    await js(wt, `document.getElementById('w-e').click()`); await esp(150); // vuelve a cristal
+    await captura('widget-tiempo', wt); await captura('widget-sistema', ws);
+    nativeTheme.themeSource = 'system'; await esp(400); await captura('widget-tiempo-oscuro', wt); await captura('widget-sistema-oscuro', ws);
+    await js(wt, `document.getElementById('w-x').click()`); await esp(300);
+    if (widgets.has('tiempo')) fallos.push('widget Tiempo: la × no lo quita');
+    ponerWidget('sistema', false); await esp(200);
+    if (widgets.size) fallos.push('widgets: quedan abiertos');
+  }
+  // varias ciudades: buscar «Alcalá», añadirla, cambiar de ciudad con las pestañitas y quitarla
+  if (await n(win, '.ciu') !== 0) fallos.push('ciudades: con una sola no debería haber pestañitas');
+  await js(win, `document.getElementById('ci-abrir').click()`);
+  await js(win, `(t => { t.value = 'Alcalá'; })(document.getElementById('ci-texto')); document.getElementById('ci-form').requestSubmit()`); await esp(400);
+  if (await n(win, '.ci-op') !== 2) fallos.push('ciudades: la búsqueda no da resultados');
+  await js(win, `document.querySelector('.ci-op').click()`); await esp(400);
+  if (await n(win, '.ciu-n') !== 2) fallos.push('ciudades: no se añade la ciudad');
+  if (!/Alcal/.test(await js(win, `document.querySelector('.ciu.on .ciu-n')?.textContent || ''`))) fallos.push('ciudades: la nueva no queda elegida');
+  await captura('panel-tiempo-ciudades', win);
+  await js(win, `document.querySelector('.ciu:not(.on) .ciu-n').click()`); await esp(150);
+  if (!/Madrid/.test(await js(win, `document.querySelector('.ciu.on .ciu-n')?.textContent || ''`))) fallos.push('ciudades: no cambia de ciudad');
+  await js(win, `document.querySelector('.ciu:not(.on) .ciu-n').click()`); await esp(150);
+  await js(win, `document.querySelector('.ciu.on .ciu-q').click()`); await esp(400);
+  if (await n(win, '.ciu') !== 0) fallos.push('ciudades: no se quita');
   const tarjetas = await n(Alarmas.overlay(), '.tarjeta');
   if (tarjetas !== 5) fallos.push('tarjetas visibles: ' + tarjetas + ' (esperadas 5)');
   // nuevo: borrar un evento de la agenda (con confirmación), marcar todo el buzón y la página de notas
