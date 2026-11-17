@@ -51,7 +51,8 @@ async function leerCorreo() { // nunca dos lecturas de Outlook a la vez; si lleg
   if (!Correo) return;
   if (leyendoCorreo) { pendienteCorreo = true; return; }
   leyendoCorreo = true;
-  try { const r = await Correo.leer({ dias: Math.max(diasAgenda, 14) }); conservar('correo', r.ok ? { ...r, dias: diasAgenda } : r); } // se leen ≥14 días (el overlay colorea alarmas lejanas); la pestaña pinta solo `dias` catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
+  try { const r = await Correo.leer({ dias: Math.max(diasAgenda, 14) }); conservar('correo', r.ok ? { ...r, dias: diasAgenda } : r); } // se leen ≥14 días (el overlay colorea alarmas lejanas); la pestaña pinta solo `dias`
+  catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
   finally { leyendoCorreo = false; ultCorreo = Date.now(); if (pendienteCorreo) { pendienteCorreo = false; leerCorreo(); } }
 }
 async function leerMeteo() {
@@ -251,6 +252,18 @@ ipcMain.handle('buzon:marcar', async () => {
   if (!Correo) return { ok: false, hechos: 0, fallos: 0 };
   const r = await Correo.marcarBuzon(); if (!r.ok) log('marcar buzón falló'); leerCorreo(); return r;
 });
+ipcMain.handle('agenda:editar', async (_, ev) => {
+  const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+  if (!ev || typeof ev.id !== 'string' || !ev.id || !iso.test(ev.inicioOriginal) || typeof ev.titulo !== 'string' || !iso.test(ev.inicio) || !iso.test(ev.fin)) return { ok: false, motivo: 'evento no válido' };
+  if (HUMO) {
+    const c = cache.correo, x = c && c.agenda && c.agenda.find(y => y.id === ev.id && y.inicio === ev.inicioOriginal); if (!x) return { ok: false, motivo: 'evento no válido' };
+    Object.assign(x, { titulo: ev.titulo, inicio: ev.inicio, fin: ev.fin, todoDia: !!ev.todoDia, lugar: ev.lugar || '' });
+    if (typeof ev.categoria === 'string') { const k = (c.categorias || []).find(z => z.nombre === ev.categoria); x.categoria = k ? k.nombre : ''; x.color = k ? k.color : null; }
+    enviar('correo', c); return { ok: true };
+  }
+  if (!Correo) return { ok: false, motivo: 'Outlook no disponible' };
+  const r = await Correo.editarEvento(ev); leerCorreo(); return r; // relee siempre: si falló, la agenda vuelve a lo que hay en Outlook
+});
 ipcMain.handle('agenda:borrar', async (_, ev) => {
   if (!ev || typeof ev.id !== 'string' || !ev.id) return { ok: false, motivo: 'evento no válido' };
   if (HUMO) { const c = cache.correo; if (c && c.agenda) { c.agenda = c.agenda.filter(x => !(x.id === ev.id && (ev.serie || x.inicio === ev.inicio))); enviar('correo', c); } return { ok: true }; }
@@ -355,7 +368,10 @@ async function humo() {
   }
   await captura('overlay', Alarmas.overlay());
   const n = (w, s) => js(w, `document.querySelectorAll('${s}').length`);
-  for (const [s, esperadas] of [['.fila', 12], ['.fila-correo', 8], ['.evento', 9]]) { const v = await n(win, s); if (v !== esperadas) fallos.push(`${s}: ${v} (esperadas ${esperadas})`); }
+  for (const [s, esperadas] of [['.fila', 12], ['.fila-correo', 3], ['.evento', 9]]) { const v = await n(win, s); if (v !== esperadas) fallos.push(`${s}: ${v} (esperadas ${esperadas})`); }
+  await js(win, `document.getElementById('c-ocultar').click()`); await esp(150); // el interruptor enseña también los leídos
+  { const v = await n(win, '.fila-correo'); if (v !== 8) fallos.push(`.fila-correo con leídos: ${v} (esperadas 8)`); }
+  await js(win, `document.getElementById('c-ocultar').click()`); await esp(150);
   // chincheta de la Agenda: primer evento futuro con hora -> alarma nueva (.fila +1, aria-pressed) y alternar de vuelta
   await js(win, `document.querySelector('button[data-tab="agenda"]').click()`); await esp(300);
   const pin = `[...document.querySelectorAll('#agenda .evento')].find(e => +e.dataset.ms > Date.now() && e.querySelector('.h').textContent !== 'Todo el día').querySelector('.pin-ev')`;
@@ -419,6 +435,12 @@ async function humo() {
   // nuevo: borrar un evento de la agenda (con confirmación), marcar todo el buzón y la página de notas
   await js(win, `document.querySelector('button[data-tab="agenda"]').click()`); await esp(300);
   const evAntes = await n(win, '.evento');
+  // editar: lápiz del primer evento con hora -> formulario precargado, cambiar título y 15 min, guardar
+  await js(win, `[...document.querySelectorAll('#agenda .evento')].find(e => e.querySelector('.h').textContent !== 'Todo el día').querySelector('.editar-ev').click()`); await esp(200);
+  if (await js(win, `document.getElementById('ev-crear').textContent`) !== 'Guardar cambios') fallos.push('editar evento: el formulario no pasa a modo edición');
+  await js(win, `(() => { \document.querySelector('.ev-\dur[\data-m="15"]').click(); const t = \document.getElementByI\d('ev-texto'); t.value = 'E\dita\do humo ' + t.value.match(/\\d{1,2}:\\d{2}$/)[0]; t.\dispatchEvent(new Event('input')); })()`);
+  await js(win, `document.getElementById('ev-crear').click()`); await esp(400);
+  if (!await js(win, `[...document.querySelectorAll('#agenda .evento .tt')].some(t => t.textContent.startsWith('Editado humo'))`)) fallos.push('editar evento: el cambio no sale en la agenda');
   await js(win, `document.querySelector('#agenda .borrar-ev').click()`); await esp(200);
   if (!await n(win, '.ev-conf')) fallos.push('borrar evento: no aparece la confirmación');
   await js(win, `document.querySelector('.ev-conf [data-act="una"]').click()`); await esp(600);

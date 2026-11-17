@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   buzonContar: () => ipcRenderer.invoke('buzon:contar'),
   buzonMarcar: () => ipcRenderer.invoke('buzon:marcar'),
   borrarEvento: ev => ipcRenderer.invoke('agenda:borrar', ev),
+  editarEvento: ev => ipcRenderer.invoke('agenda:editar', ev),
   notasLeer: () => ipcRenderer.invoke('notas:leer'),
   notasGuardar: lista => ipcRenderer.invoke('notas:guardar', lista),
   fijar: b => ipcRenderer.send('fijar', !!b),

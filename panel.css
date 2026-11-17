@@ -138,8 +138,8 @@ h2 { font-size: 12px; font-weight: 600; color: var(--sec); text-transform: upper
 .evento:hover .pin-ev, .pin-ev:focus-visible, .pin-ev[aria-pressed=true] { opacity: 1; }
 .pin-ev[aria-pressed=true] { color: var(--ac-t); } .pin-ev[aria-pressed=true] svg { fill: currentColor; fill-opacity: .85; }
 /* borrar evento de Outlook: papelera discreta, y la confirmación debajo de la fila */
-.borrar-ev { flex: none; align-self: center; width: 24px; height: 24px; border-radius: 8px; padding: 0; opacity: .4; transition: opacity .15s, color .15s; }
-.evento:hover .borrar-ev, .borrar-ev:focus-visible { opacity: 1; } .borrar-ev:hover { color: #ff6b5b; }
+.editar-ev, .borrar-ev { flex: none; align-self: center; width: 24px; height: 24px; border-radius: 8px; padding: 0; opacity: .4; transition: opacity .15s, color .15s; }
+.evento:hover .editar-ev, .evento:hover .borrar-ev, .editar-ev:focus-visible, .borrar-ev:focus-visible { opacity: 1; } .editar-ev:hover { color: var(--ac-t); } .borrar-ev:hover { color: #ff6b5b; }
 .ev-conf { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -2px 0 8px; padding: 6px 10px; border-radius: 17px; background: var(--vidrio-h); box-shadow: inset 0 0 0 1px var(--b1); font-size: 12px; }
 .ev-conf span { flex: 1 0 100%; font-weight: 600; }
 /* confirmación de «Marcar todo el buzón» */
@@ -225,3 +225,5 @@ select.campo option { background: #2b2f38; color: #fff; }
 #ev-aviso { margin: 0 0 6px; padding: 6px 12px; border-radius: 12px; font-size: 12px; background: var(--ac-v); }
 #ev-chips { max-height: 98px; overflow-y: auto; padding: 2px; } /* con muchas categorías de Outlook, ~3 filas y scroll */
 .fila .n.c { color: var(--c); font-weight: 600; } /* alarma puesta desde un evento: color de su etiqueta de Outlook */
+
+#c-ocultar[aria-checked=true] { background: var(--ac-v); box-shadow: inset 0 0 0 1px var(--acento), 0 0 12px var(--ac-v); font-weight: 600; }

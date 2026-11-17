@@ -9,7 +9,8 @@
 #      outlook.ps1 -MarcarBuzon -> marca como leídos todos los correos sin leer de todas las carpetas; salida {ok,hechos,fallos}
 #      outlook.ps1 -BorrarEvento F -> borra el evento del JSON F {id,inicio,recurrente,serie}: la serie entera (serie) o solo la ocurrencia de «inicio»
 # Códigos de salida: 0 = ok · 3 = Outlook cerrado (no se abre solo) · 4 = Outlook no instalado · 5 = otro error
-param([string]$Abrir, [string]$Leidos, [string]$Crear, [switch]$Ensayo, [int]$Dias = 7, [switch]$Buzon, [switch]$MarcarBuzon, [string]$BorrarEvento)
+#      outlook.ps1 -EditarEvento F -> cambia el evento del JSON F {id,inicioOriginal,recurrente,titulo,inicio,fin,todoDia,lugar[,categoria]}; en una serie, solo la ocurrencia de «inicioOriginal»
+param([string]$Abrir, [string]$Leidos, [string]$Crear, [switch]$Ensayo, [int]$Dias = 7, [switch]$Buzon, [switch]$MarcarBuzon, [string]$BorrarEvento, [string]$EditarEvento)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 
@@ -75,6 +76,22 @@ try {
     exit 0
   }
 
+  if ($EditarEvento) {
+    $j = Get-Content -LiteralPath $EditarEvento -Raw -Encoding UTF8 | ConvertFrom-Json
+    $ci = [Globalization.CultureInfo]::InvariantCulture; $fmt = 'yyyy-MM-ddTHH:mm:ss'
+    $it = $ns.GetItemFromID([string]$j.id)
+    if ($j.recurrente) { $it = $it.GetRecurrencePattern().GetOccurrence([datetime]::ParseExact([string]$j.inicioOriginal, $fmt, $ci)) }
+    $it.Subject = [string]$j.titulo
+    $it.AllDayEvent = [bool]$j.todoDia
+    $it.Start = [datetime]::ParseExact([string]$j.inicio, $fmt, $ci)
+    $it.End = [datetime]::ParseExact([string]$j.fin, $fmt, $ci)
+    $it.Location = [string]$j.lugar
+    if ($j.PSObject.Properties['categoria']) { $it.Categories = [string]$j.categoria }
+    $it.Save()
+    [ordered]@{ ok = $true } | ConvertTo-Json -Compress
+    exit 0
+  }
+
   if ($Crear) {
     $j = Get-Content -LiteralPath $Crear -Raw -Encoding UTF8 | ConvertFrom-Json
     $ci = [Globalization.CultureInfo]::InvariantCulture; $fmt = 'yyyy-MM-ddTHH:mm:ss'
@@ -107,8 +124,9 @@ try {
   # Agenda: hoy 00:00 hasta hoy+$Dias días 00:00 (1–120), todos los almacenes
   $Dias = [Math]::Min(120, [Math]::Max(1, $Dias))
   $d0 = (Get-Date).Date; $d1 = $d0.AddDays($Dias)
-  $us = [Globalization.CultureInfo]::GetCultureInfo('en-US')
-  $filtro = "[Start] < '" + $d1.ToString('MM/dd/yyyy hh:mm tt', $us) + "' AND [End] > '" + $d0.ToString('MM/dd/yyyy hh:mm tt', $us) + "'"
+  # Restrict() interpreta las fechas con el formato regional del sistema (en es-ES: dd/MM/yyyy), NO con el de EE. UU.: con MM/dd el rango salía mal o vacío según el día
+  $cu = [Globalization.CultureInfo]::CurrentCulture
+  $filtro = "[Start] < '" + $d1.ToString('g', $cu) + "' AND [End] > '" + $d0.ToString('g', $cu) + "'"
   $agenda = New-Object Collections.Generic.List[object]; $vistos = @{}; $categorias = New-Object Collections.Generic.List[object]; $nombres = @{}
   foreach ($st in $ns.Stores) {
     $col = @{}

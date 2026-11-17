@@ -126,4 +126,21 @@ async function borrarEvento(ev) {
   finally { try { fs.unlinkSync(f); } catch {} }
 }
 
-module.exports = { leer, abrir, marcarLeidos, normalizar, crearEvento, validarEvento, contarBuzon, marcarBuzon, borrarEvento };
+// Edita un evento de la agenda. ev = { id, inicioOriginal, recurrente, titulo, inicio, fin, todoDia, lugar, categoria? }: en una serie, solo esa ocurrencia.
+async function editarEvento(ev) {
+  const mal = validarEvento(ev);
+  if (mal) return { ok: false, motivo: mal };
+  if (typeof ev.id !== 'string' || !ev.id || typeof ev.inicioOriginal !== 'string' || !ISO.test(ev.inicioOriginal)) return { ok: false, motivo: 'evento no válido' };
+  const f = path.join(os.tmpdir(), `panel-editar-${process.pid}-${Date.now()}.json`);
+  try {
+    const d = { id: ev.id, inicioOriginal: ev.inicioOriginal, recurrente: !!ev.recurrente, titulo: ev.titulo.trim(), inicio: ev.inicio, fin: ev.fin, todoDia: !!ev.todoDia, lugar: (ev.lugar || '').trim() };
+    if (typeof ev.categoria === 'string') d.categoria = ev.categoria;
+    fs.writeFileSync(f, JSON.stringify(d));
+    const r = await ps(['-EditarEvento', f]);
+    if (r.codigo !== 0) return { ok: false, motivo: 'No se pudo editar el evento' + (r.err.trim() ? ': ' + r.err.trim().slice(0, 150) : '') };
+    return { ok: true };
+  } catch { return { ok: false, motivo: 'No se pudo editar el evento' }; }
+  finally { try { fs.unlinkSync(f); } catch {} }
+}
+
+module.exports = { leer, abrir, marcarLeidos, normalizar, crearEvento, validarEvento, contarBuzon, marcarBuzon, borrarEvento, editarEvento };

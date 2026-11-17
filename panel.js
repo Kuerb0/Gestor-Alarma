@@ -119,6 +119,7 @@ function fechaCorta(iso) {
   if (dd === 1) return 'ayer';
   return f.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '') + ' ' + f.getDate();
 }
+let ocultarLeidos = true; try { ocultarLeidos = localStorage.getItem('ocultarLeidos') !== '0'; } catch {} // por defecto, los leídos no se enseñan
 function pintaCorreo(r) {
   correo = r; const c = $('correo'), chip = $('chip');
   $('obs').textContent = r && r.ok && r.obsoleto ? 'desactualizado' : '';
@@ -130,7 +131,8 @@ function pintaCorreo(r) {
     const b = $('ab'); if (b) b.onclick = () => api.abrirOutlook();
   } else {
     chip.hidden = !r.noLeidos; chip.textContent = r.noLeidos;
-    c.innerHTML = r.correos.length ? r.correos.map(m => `<div class="fila-correo${m.leido ? '' : ' nl'}" data-id="${esc(m.id)}" title="${esc(m.asunto)}" tabindex="0" aria-selected="false"><span class="p"></span><button class="chk" tabindex="-1" role="checkbox" aria-checked="false" aria-label="Seleccionar">${SVG_OK}</button><span class="de">${esc(m.de)}</span>${m.leido ? '' : `<button class="leer" tabindex="-1" title="Marcar como leído" aria-label="Marcar como leído">${SVG_SOBRE}</button>`}<span class="h">${fechaCorta(m.fecha)}</span><span class="as">${esc(m.asunto)}</span></div>`).join('') : '<div class="vacio">Sin correos</div>';
+    const lista = ocultarLeidos ? r.correos.filter(m => !m.leido) : r.correos;
+    c.innerHTML = lista.length ? lista.map(m => `<div class="fila-correo${m.leido ? '' : ' nl'}" data-id="${esc(m.id)}" title="${esc(m.asunto)}" tabindex="0" aria-selected="false"><span class="p"></span><button class="chk" tabindex="-1" role="checkbox" aria-checked="false" aria-label="Seleccionar">${SVG_OK}</button><span class="de">${esc(m.de)}</span>${m.leido ? '' : `<button class="leer" tabindex="-1" title="Marcar como leído" aria-label="Marcar como leído">${SVG_SOBRE}</button>`}<span class="h">${fechaCorta(m.fecha)}</span><span class="as">${esc(m.asunto)}</span></div>`).join('') : (r.correos.length ? '<div class="vacio">Sin correos sin leer</div>' : '<div class="vacio">Sin correos</div>');
   }
   sel = new Set([...sel].filter(id => correo && correo.ok && correo.correos.some(m => m.id === id))); sel.size || (ancla = -1); marcaSel();
   pintaAgenda(); if (!evForm.hidden) evPintaChips();
@@ -156,7 +158,8 @@ function leer(ids) { // optimista: quita negrita/punto, baja el contador y avisa
   if (!correo || !correo.ok || !ids.length) return;
   const nuevos = correo.correos.filter(m => ids.includes(m.id) && !m.leido);
   nuevos.forEach(m => m.leido = true);
-  filas().filter(f => ids.includes(f.dataset.id)).forEach(f => { f.classList.remove('nl'); const b = f.querySelector('.leer'); if (b) b.remove(); });
+  if (ocultarLeidos) pintaCorreo(correo); // los leídos desaparecen de la lista
+  else filas().filter(f => ids.includes(f.dataset.id)).forEach(f => { f.classList.remove('nl'); const b = f.querySelector('.leer'); if (b) b.remove(); });
   correo.noLeidos = Math.max(0, correo.noLeidos - nuevos.length); $('chip').hidden = !correo.noLeidos; $('chip').textContent = correo.noLeidos;
   api.marcarLeidos && api.marcarLeidos(ids);
 }
@@ -171,6 +174,12 @@ $('correo').addEventListener('keydown', e => {
   if (e.key === ' ') { e.preventDefault(); alterna(f, e.shiftKey); } else if (e.key === 'Enter') api.abrirCorreo(f.dataset.id);
 });
 $('c-leer').onclick = () => { leer([...sel]); sel.clear(); ancla = -1; marcaSel(); };
+$('c-ocultar').setAttribute('aria-checked', ocultarLeidos);
+$('c-ocultar').onclick = () => {
+  ocultarLeidos = !ocultarLeidos; $('c-ocultar').setAttribute('aria-checked', ocultarLeidos);
+  try { localStorage.setItem('ocultarLeidos', ocultarLeidos ? '1' : '0'); } catch {}
+  if (correo) pintaCorreo(correo);
+};
 $('c-todo').onclick = () => { filas().forEach(f => sel.add(f.dataset.id)); marcaSel(); };
 $('c-nada').onclick = () => { sel.clear(); ancla = -1; marcaSel(); };
 // todo el buzón: cuenta primero y pide confirmación con el número real (puede ser muchísimo y no tiene deshacer)
@@ -195,6 +204,7 @@ $('c-conf-ok').onclick = async () => {
 
 // ---- agenda
 const SVG_PIN = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16.5V22"/><path d="M8.5 3h7l-1 6.5 3 3.2V15h-12v-2.3l3-3.2z"/></svg>';
+const SVG_LAPIZ = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
 const SVG_BASURA = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l1 12.5h9l1-12.5"/></svg>';
 // borrar evento: la clave identifica la fila; la confirmación sigue abierta aunque la agenda se repinte cada minuto
 const clave = e => (e.id || '') + '|' + e.inicio;
@@ -242,7 +252,7 @@ function pintaAgenda() {
   const largo = d => d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' });
   const nombre = (d, i) => i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : largo(d).replace(/^./, c => c.toUpperCase());
   const evDe = i => { const ini = fecha(i).getTime(), f = fecha(i + 1).getTime(); return eventos.filter(e => { const a = new Date(e.inicio).getTime(), b = new Date(e.fin || e.inicio).getTime(); return a < f && Math.max(b, a + 1) > ini; }).sort((x, y) => new Date(x.inicio) - new Date(y.inicio)); };
-  const dia = (i, ev) => `<div class="diah" role="button" tabindex="0" data-i="${i}" title="Añadir evento este día">${nombre(fecha(i), i)}</div>` + (ev.length ? ev.map(e => `<div class="evento" tabindex="0" data-ms="${alarmaMs(e)}"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}${e.id ? `<button class="borrar-ev" data-k="${esc(clave(e))}" aria-label="Borrar evento: ${esc(e.titulo)}" title="Borrar de Outlook">${SVG_BASURA}</button>` : ''}<button class="pin-ev" aria-pressed="false" aria-label="Poner como alarma: ${esc(e.titulo)}" title="Poner como alarma">${SVG_PIN}</button></div>${confirmarBorrado(e)}`).join('') : '<div class="vacio">Sin eventos</div>');
+  const dia = (i, ev) => `<div class="diah" role="button" tabindex="0" data-i="${i}" title="Añadir evento este día">${nombre(fecha(i), i)}</div>` + (ev.length ? ev.map(e => `<div class="evento" tabindex="0" data-ms="${alarmaMs(e)}"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}${e.id ? `<button class="editar-ev" data-k="${esc(clave(e))}" aria-label="Editar evento: ${esc(e.titulo)}" title="Editar">${SVG_LAPIZ}</button><button class="borrar-ev" data-k="${esc(clave(e))}" aria-label="Borrar evento: ${esc(e.titulo)}" title="Borrar de Outlook">${SVG_BASURA}</button>` : ''}<button class="pin-ev" aria-pressed="false" aria-label="Poner como alarma: ${esc(e.titulo)}" title="Poner como alarma">${SVG_PIN}</button></div>${confirmarBorrado(e)}`).join('') : '<div class="vacio">Sin eventos</div>');
   let html = '', ini = -1, fin = -1; // racha de días vacíos (desde el día 8 se agrupan en una línea)
   const cierra = () => { if (ini >= 0) html += `<div class="vacio fino">Sin eventos ${ini === fin ? 'el' : 'hasta el'} ${largo(fecha(fin))}</div>`; ini = fin = -1; };
   for (let i = 0; i < n; i++) {
@@ -268,7 +278,8 @@ function pintaAgenda() {
 
 // ---- nuevo evento (formulario de la Agenda)
 const evForm = $('ev-form');
-let evDia = null, evDur = 60, evCat = '', evBusy = false, evAvisoT = 0;
+let evDia = null, evDur = 60, evCat = '', evBusy = false, evAvisoT = 0, evEdit = null; // evEdit: evento que se está editando { id, inicioOriginal, recurrente, cat }
+const evEtq = () => evEdit ? 'Guardar cambios' : 'Añadir a Outlook';
 const evIso = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:00`;
 const evFecha = d => d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'numeric' }).replace('.', '').replace(/, /, ' ');
 // Texto -> { ev, ini, fin } o { error }. Sin fecha en el texto usa el día elegido (evDia); sin hora = todo el día.
@@ -310,9 +321,21 @@ function evPintaChips() {
   });
 }
 function evAbrir(dia) {
+  if (evEdit) evCerrar();
   evDia = dia || null; evForm.hidden = false; $('ev-abrir').setAttribute('aria-expanded', 'true'); evPintaChips(); evVista(); $('ev-texto').focus();
 }
+function evEditar(e) { // abre el formulario con el evento: título + hora en el texto, día elegido, duración, etiqueta y lugar
+  const ini = new Date(e.inicio), fin = new Date(e.fin || e.inicio), min = Math.round((fin - ini) / 6e4);
+  evCerrar(); evForm.hidden = false; $('ev-abrir').setAttribute('aria-expanded', 'true');
+  evDia = dia0(ini); evDur = e.todoDia ? 0 : (min > 0 ? min : 60); evCat = e.categoria || '';
+  $('ev-texto').value = e.titulo + (e.todoDia ? '' : ' ' + hhmm(ini));
+  $('ev-lugar-i').value = e.lugar || ''; if (e.lugar) { $('ev-lugar').hidden = false; $('ev-mas').hidden = true; }
+  document.querySelectorAll('.ev-dur').forEach(b => b.setAttribute('aria-pressed', +b.dataset.m === evDur));
+  evPintaChips(); evEdit = { id: e.id, inicioOriginal: e.inicio, recurrente: !!e.recurrente, cat: evCat }; $('ev-crear').textContent = evEtq();
+  evVista(); $('ev-texto').focus(); evForm.scrollIntoView({ block: 'nearest' });
+}
 function evCerrar() {
+  evEdit = null; $('ev-crear').textContent = evEtq();
   evForm.hidden = true; $('ev-abrir').setAttribute('aria-expanded', 'false'); evDia = null; evCat = ''; evDur = 60;
   $('ev-texto').value = ''; $('ev-lugar-i').value = ''; $('ev-lugar').hidden = true; $('ev-mas').hidden = false;
   document.querySelectorAll('.ev-dur').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === '60'));
@@ -335,10 +358,14 @@ evForm.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropag
 evForm.onsubmit = async e => {
   e.preventDefault(); if (evBusy) return;
   const r = evVista(); if (!r.ev) { if (!r.error) { $('ev-vista').className = 'mal'; $('ev-vista').textContent = 'Escribe el evento'; } return; }
-  evBusy = true; $('ev-crear').disabled = true; $('ev-crear').textContent = 'Creando…';
-  let g; try { g = await api.crearEvento(r.ev); } catch { g = { ok: false, motivo: 'No se pudo crear el evento' }; }
-  evBusy = false; $('ev-crear').disabled = false; $('ev-crear').textContent = 'Añadir a Outlook';
-  if (g && g.ok) { evCerrar(); evAviso('Añadido a Outlook'); } else { $('ev-vista').className = 'mal'; $('ev-vista').textContent = (g && g.motivo) || 'No se pudo crear el evento'; }
+  const ed = evEdit; evBusy = true; $('ev-crear').disabled = true; $('ev-crear').textContent = ed ? 'Guardando…' : 'Creando…';
+  let g;
+  try {
+    if (ed) { const d = { ...r.ev, id: ed.id, inicioOriginal: ed.inicioOriginal, recurrente: ed.recurrente }; if (evCat === ed.cat) delete d.categoria; g = await api.editarEvento(d); }
+    else g = await api.crearEvento(r.ev);
+  } catch { g = { ok: false, motivo: ed ? 'No se pudo editar el evento' : 'No se pudo crear el evento' }; }
+  evBusy = false; $('ev-crear').disabled = false; $('ev-crear').textContent = evEtq();
+  if (g && g.ok) { evCerrar(); evAviso(ed ? 'Evento actualizado' : 'Añadido a Outlook'); } else { $('ev-vista').className = 'mal'; $('ev-vista').textContent = (g && g.motivo) || 'No se pudo crear el evento'; }
 };
 const evDiaClic = e => {
   const d = e.target.closest('.diah'); if (!d || (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ')) return;
@@ -347,6 +374,7 @@ const evDiaClic = e => {
 $('agenda').addEventListener('click', evDiaClic); $('agenda').addEventListener('keydown', evDiaClic);
 
 $('agenda').addEventListener('click', e => {
+  const ed = e.target.closest('.editar-ev'); if (ed) { const ev = correo && correo.agenda && correo.agenda.find(x => clave(x) === ed.dataset.k); if (ev) evEditar(ev); return; }
   const b = e.target.closest('.borrar-ev'); if (b) { borrarPend = b.dataset.k; return pintaAgenda(); }
   const c = e.target.closest('.ev-conf'); if (c) { const bt = e.target.closest('button[data-act]'); if (bt) evConfirma(bt); return; }
   const el = e.target.closest('.evento'); if (el) evAlarma(el);
