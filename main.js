@@ -347,7 +347,7 @@ async function humo() {
     dias: nd.map((n, i) => ({ fecha: iso(ahora + i * d).slice(0, 10), nombre: n, max: 20 + i, min: 9 + i, icono: ic[i], texto: 'Soleado', lluvia: i * 15,
       horas: dHoras[i], puntos: puntos(i, dHoras[i]) })) });
   Alarmas.datosHumo();
-  enviar('sistema', { cpu: 23, ramUsada: 9.5e9, ramTotal: 16e9, discoLibre: 180e9, discoTotal: 500e9 });
+  enviar('sistema', { cpu: 23, ramUsada: 9.5e9, ramTotal: 16e9, discoLibre: 180e9, discoTotal: 500e9, dispositivos: [{ nombre: 'Ratón', nivel: 72, aprox: false }, { nombre: 'Mando Xbox', nivel: 60, aprox: true }, { nombre: 'Teclado', nivel: 15, aprox: false }] });
   nueva = { version: '9.9.9' }; pintarAct(); // pastilla de «versión nueva» inventada
   abrir();
   await new Promise(r => setTimeout(r, 1500));

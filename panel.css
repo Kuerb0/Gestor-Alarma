@@ -227,3 +227,4 @@ select.campo option { background: #2b2f38; color: #fff; }
 .fila .n.c { color: var(--c); font-weight: 600; } /* alarma puesta desde un evento: color de su etiqueta de Outlook */
 
 #c-ocultar[aria-checked=true] { background: var(--ac-v); box-shadow: inset 0 0 0 1px var(--acento), 0 0 12px var(--ac-v); font-weight: 600; }
+.barras .sub { margin: 6px 4px -4px; font-size: 12px; font-weight: 600; color: var(--sec); letter-spacing: .04em; text-transform: uppercase; }

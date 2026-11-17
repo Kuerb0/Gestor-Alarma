@@ -424,6 +424,7 @@ $('nt-lista').addEventListener('click', e => {
 
 // ---- sistema
 const barra = (n, v, txt, inv) => `<div class="barra">${n} · ${txt}<progress max="100" value="${Math.min(100, Math.max(0, Math.round(v)))}" class="${(inv ? v < 15 : v > 85) ? 'alto' : ''}"></progress></div>`;
+const iconoDisp = n => /mando|controller|gamepad|xbox|dualsense|dualshock|joy-?con/i.test(n) ? '🎮' : /mouse|rat[oó]n|mx master|m[x]? anywhere/i.test(n) ? '🖱️' : /keyboard|teclado|mx keys|k\d{2,3}/i.test(n) ? '⌨️' : /buds|airpods|head|auric|wh-|speaker|altavoz|earbud/i.test(n) ? '🎧' : '🔋';
 function pintaSistema() {
   let h = '';
   if (sis) {
@@ -432,6 +433,13 @@ function pintaSistema() {
     h += barra('RAM', sis.ramUsada / sis.ramTotal * 100, `${gb(sis.ramUsada)}/${gb(sis.ramTotal)} GB`);
     const u = sis.discoTotal - sis.discoLibre;
     h += barra('Disco C:', u / sis.discoTotal * 100, `${Math.round(sis.discoLibre / 1e9)} GB libres`);
+  }
+  if (sis) {
+    h += '<h3 class="sub">Dispositivos</h3>';
+    const ds = sis.dispositivos;
+    if (!ds) h += '<div class="vacio">Buscando dispositivos…</div>';
+    else if (!ds.length) h += '<div class="vacio">Ningún dispositivo con batería detectado. Los que usan receptor USB propio (2,4 GHz) no la comunican a Windows.</div>';
+    else h += ds.map(d => barra(iconoDisp(d.nombre) + ' ' + esc(d.nombre), d.nivel, (d.aprox ? '≈ ' : '') + d.nivel + '%', true)).join('');
   }
   if (bateria) h += barra('Batería' + (bateria.charging ? ' ⚡' : ''), bateria.level * 100, Math.round(bateria.level * 100) + '%', true);
   $('sistema').innerHTML = '<div class="barras">' + h + '</div>';
