@@ -13,13 +13,14 @@ public static class PC {
   public struct R { public int L, T, Rr, B; }
   [StructLayout(LayoutKind.Sequential)] public struct MI { public int cb; public R mon, work; public uint f; }
   public static bool Completa() {
-    int s; if (SHQueryUserNotificationState(out s) == 0 && (s == 2 || s == 3 || s == 4)) return true;  // ocupado, D3D, presentación
+    // Las fichas y el panel viven en el monitor principal: solo cuenta lo que pasa ahí (una app a pantalla completa en otro monitor no los esconde)
     IntPtr h = GetForegroundWindow(); if (h == IntPtr.Zero) return false;
+    var i = new MI(); i.cb = Marshal.SizeOf(typeof(MI));
+    if (!GetMonitorInfo(MonitorFromWindow(h, 2), ref i) || (i.f & 1) == 0) return false;  // 1 = MONITORINFOF_PRIMARY
+    int s; if (SHQueryUserNotificationState(out s) == 0 && (s == 2 || s == 3 || s == 4)) return true;  // ocupado, D3D, presentación
     var c = new StringBuilder(64); GetClassName(h, c, 64); string k = c.ToString();
     if (k == "Progman" || k == "WorkerW" || k == "Shell_TrayWnd") return false;  // el escritorio también «tapa» el monitor
     R r; if (!GetWindowRect(h, out r)) return false;
-    var i = new MI(); i.cb = Marshal.SizeOf(typeof(MI));
-    if (!GetMonitorInfo(MonitorFromWindow(h, 2), ref i)) return false;
     return r.L <= i.mon.L && r.T <= i.mon.T && r.Rr >= i.mon.Rr && r.B >= i.mon.B;
   }
 }
