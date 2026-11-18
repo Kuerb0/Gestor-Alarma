@@ -417,7 +417,7 @@ app.whenReady().then(async () => {
   if (!globalShortcut.register('Alt+C', nuevoEvento)) log('no se pudo registrar Alt+C');
   screen.on('display-metrics-changed', colocar);
   setInterval(sondear, 80);
-  if (HUMO) return humo();
+  if (HUMO) return humo().catch(e => { console.log('HUMO FALLA\nexcepción: ' + (e && e.stack || e)); app.exit(1); }); // si la prueba lanza, sale en vez de quedarse colgada
   vigilarCompleta();
   Object.keys(WIDGETS).forEach(t => ajustes.widgets && ajustes.widgets[t] && ajustes.widgets[t].abierto && ponerWidget(t, true));
   estado(); if (ajustes.fijado) abrir();
@@ -478,6 +478,16 @@ async function humo() {
       if (!/humo/.test(est)) fallos.push('botón sincronizar: ' + est);
       const vd = await js(win, `document.getElementById('al-ventana')?.value`);
       if (vd !== '14') fallos.push('ventana en días: ' + vd + ' (esperada 14)');
+      // etiquetas de Outlook: lo que se cambia en la lista llega al disco y la lista lo conserva al repintarse
+      const cambia = `(async () => { const f = document.querySelector('#al-etq-l .etq'); if (!f) return 'sin filas';
+        const ck = f.querySelector('.e-al'); ck.checked = true; ck.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 300));
+        const g = document.querySelector('#al-etq-l .etq'), an = g.querySelector('.e-an'), au = g.querySelector('.e-au'); au.value = '1440'; an.value = '3'; an.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 300)); return f.dataset.n; })()`;
+      const nombreE = await js(win, cambia); await esp(600);
+      let guardado = null; try { guardado = (JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'ajustes.json'), 'utf8')).etiquetas || []).find(e => e.nombre === nombreE); } catch {}
+      if (!guardado || guardado.alarma !== true || guardado.antes !== 4320) fallos.push('etiquetas: no se guardan en disco (' + nombreE + ' → ' + JSON.stringify(guardado) + ')');
+      const vuelta = await js(win, `(() => { const f = document.querySelector('#al-etq-l .etq'); return f ? [f.querySelector('.e-al').checked, f.querySelector('.e-an').value, f.querySelector('.e-au').value].join() : 'sin filas'; })()`);
+      if (vuelta !== 'true,3,1440') fallos.push('etiquetas: la lista no conserva lo elegido (' + vuelta + ')');
+      await js(win, `window.alarmas.syncEtiquetas([])`); await esp(200); // deja las etiquetas como estaban: si no, ese evento dejaría de salir como cuadro en el overlay
     }
     await esp(700); await captura('panel-' + t + tema, win); // 700: deja acabar la gota de la pestaña
   }
