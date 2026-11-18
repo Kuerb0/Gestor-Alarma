@@ -1,5 +1,5 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences, Notification } = require('electron');
-const fs = require('fs'), path = require('path'), { spawn } = require('child_process');
+const fs = require('fs'), path = require('path'), { spawn, execFile } = require('child_process');
 const Act = require('./actualizar'); // versiones nuevas en GitHub Releases
 const Alarmas = require('./alarmas'); // motor del antiguo Gestor-Alarmas (overlay, datos, Post-It/Outlook)
 
@@ -46,10 +46,36 @@ ipcMain.handle('silencio:hasta', () => silencioHasta);
 const estado = () => enviar('estado', { abierto, fijado: ajustes.fijado });
 
 // ---- lecturas (si falla, se conserva el último dato bueno y se marca `obsoleto`)
-const conservar = (canal, r) => { if (r && r.ok) bueno[canal] = r; enviar(canal, r && r.ok ? r : bueno[canal] ? { ...bueno[canal], obsoleto: r && r.motivo || 'error' } : r || { ok: false, motivo: 'error' }); };
+const conservar = (canal, r) => { if (r && r.ok) { bueno[canal] = r; if (canal === 'correo') guardarCacheCorreo(r); } enviar(canal, r && r.ok ? r : bueno[canal] ? { ...bueno[canal], obsoleto: r && r.motivo || 'error' } : r || { ok: false, motivo: 'error' }); };
+// Los últimos datos de Outlook se guardan en un texto (correo-cache.json, en los datos de la app): al arrancar se ven al instante y siguen ahí aunque Outlook esté cerrado o tarde en abrir.
+const CACHE_CORREO = () => path.join(app.getPath('userData'), 'correo-cache.json');
+let cacheCorreoTxt = '';
+function guardarCacheCorreo(r) {
+  if (HUMO) return;
+  try { const d = JSON.stringify(r); if (d === cacheCorreoTxt) return; cacheCorreoTxt = d; fs.writeFile(CACHE_CORREO(), JSON.stringify({ guardado: Date.now(), datos: r }), e => e && log('caché correo ' + e.message)); } catch (e) { log('caché correo ' + e.message); }
+}
+function cargarCacheCorreo() {
+  if (!Correo || HUMO) return;
+  try { const c = Correo.desdeCache(fs.readFileSync(CACHE_CORREO(), 'utf8')); if (c && !bueno.correo) { bueno.correo = c; enviar('correo', { ...c, dias: diasAgenda }); } } catch { /* sin caché todavía */ }
+}
+// Outlook clásico: si no está abierto se abre minimizado al arrancar la app y se espera a que acepte conexiones, para que la primera lectura no falle (ajustes.abrirOutlook = false lo desactiva).
+const outlookAbierto = () => new Promise(res => execFile('tasklist', ['/FI', 'IMAGENAME eq OUTLOOK.EXE', '/NH'], { windowsHide: true, timeout: 8000 }, (e, out) => res(e ? true : /OUTLOOK\.EXE/i.test(out || '')))); // si tasklist falla se da por abierto (no se hace nada)
+let abriendoOutlook = false;
+async function asegurarOutlook() {
+  if (HUMO || !Correo || ajustes.abrirOutlook === false || abriendoOutlook) return;
+  abriendoOutlook = true; // mientras tanto leerCorreo no lee: se ve la caché
+  try {
+    if (await outlookAbierto()) return;
+    log('Outlook cerrado: se abre');
+    spawn('cmd', ['/c', 'start', '/min', '', 'outlook'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+    for (let i = 0; i < 20 && !(await outlookAbierto()); i++) await new Promise(r => setTimeout(r, 3000)); // hasta 1 min a que aparezca el proceso
+    await new Promise(r => setTimeout(r, 8000)); // y unos segundos más hasta que acepta conexiones
+  } catch (e) { log('abrir Outlook ' + e.message); }
+  finally { abriendoOutlook = false; leerCorreo(); }
+}
 let pendienteCorreo = false;
 async function leerCorreo() { // nunca dos lecturas de Outlook a la vez; si llega otra petición con una en curso, se encadena al acabar
-  if (!Correo) return;
+  if (!Correo || abriendoOutlook) return;
   if (leyendoCorreo) { pendienteCorreo = true; return; }
   leyendoCorreo = true;
   try { const r = await Correo.leer({ dias: Math.max(diasAgenda, 14) }); conservar('correo', r.ok ? { ...r, dias: diasAgenda } : r); } // se leen ≥14 días (el overlay colorea alarmas lejanas); la pestaña pinta solo `dias`
@@ -219,7 +245,7 @@ function ponerWidget(tipo, v, c) { // `c` (opcional): configuración que se apli
   }
   if (!v) { if (!w0) return; guardarWidget(tipo, false); widgets.delete(tipo); if (!w0.isDestroyed()) w0.destroy(); pintarWidgets(); vigilarSistema(); return; }
   if (w0 && !w0.isDestroyed()) return;
-  const p = posicionWidget(tipo);
+  const p = HUMO ? { x: -30000, y: -30000 } : posicionWidget(tipo); // en la prueba de humo los widgets nacen fuera de pantalla: no se ven ni mueven los de verdad
   const w = new BrowserWindow({ ...p, width: anchoWidget(tipo), height: altoFijo(tipo) || 200, frame: false, transparent: true, hasShadow: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, show: false, icon: ICONO,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false } });
   widgets.set(tipo, w);
@@ -302,6 +328,7 @@ const menu = () => Menu.buildFromTemplate([
   { label: 'Actualizar ahora', click: actualizar },
   ...(nueva ? [{ label: `Actualizar a la ${nueva.version}…`, click: instalarAct }] : []),
   { label: 'Buscar actualizaciones…', click: () => buscar(true) },
+  { label: 'Abrir Outlook al iniciar', type: 'checkbox', checked: ajustes.abrirOutlook !== false, click: i => { ajustes.abrirOutlook = i.checked; guardarAjustes(); } },
   { type: 'separator' },
   ...Alarmas.menuItems(),
   { type: 'separator' },
@@ -437,6 +464,7 @@ app.whenReady().then(async () => {
   vigilarCompleta();
   Object.keys(WIDGETS).forEach(t => ajustes.widgets && ajustes.widgets[t] && ajustes.widgets[t].abierto && ponerWidget(t, true));
   estado(); if (ajustes.fijado) abrir();
+  cargarCacheCorreo(); asegurarOutlook(); // primero lo guardado, luego se abre Outlook si hace falta (esa función ya hace la primera lectura al terminar)
   actualizar();
   setTimeout(() => buscar(false), 20e3); setInterval(() => buscar(false), 6 * 36e5);
   setInterval(leerCorreo, 6e4); setInterval(leerMeteo, 18e5);

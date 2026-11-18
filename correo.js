@@ -41,6 +41,16 @@ async function leer({ dias = 7 } = {}) {
   } catch (e) { return { ok: false, motivo: 'error', detalle: e.message }; }
 }
 
+// Pura: texto del fichero de caché -> resultado de «leer» marcado como obsoleto 'cache'; null si no sirve (vacío, corrupto, de hace más de `maxDias` días o con fecha futura)
+function desdeCache(texto, ahora = Date.now(), maxDias = 7) {
+  try {
+    const j = JSON.parse(String(texto).replace(/^\uFEFF/, ''));
+    if (!j || !Number.isFinite(j.guardado) || ahora - j.guardado > maxDias * 864e5 || j.guardado > ahora + 6e4) return null;
+    const n = normalizar(j.datos);
+    return n.ok ? { ...n, dias: Number.isInteger(j.datos.dias) ? j.datos.dias : 7, obsoleto: 'cache' } : null;
+  } catch { return null; }
+}
+
 async function abrir(id) {
   try { return !!id && (await ps(['-Abrir', String(id)])).codigo === 0; } catch { return false; }
 }
@@ -143,4 +153,4 @@ async function editarEvento(ev) {
   finally { try { fs.unlinkSync(f); } catch {} }
 }
 
-module.exports = { leer, abrir, marcarLeidos, normalizar, crearEvento, validarEvento, contarBuzon, marcarBuzon, borrarEvento, editarEvento };
+module.exports = { leer, desdeCache, abrir, marcarLeidos, normalizar, crearEvento, validarEvento, contarBuzon, marcarBuzon, borrarEvento, editarEvento };
