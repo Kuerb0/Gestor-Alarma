@@ -29,7 +29,7 @@ const Correo = HUMO ? null : cargar('correo'), Meteo = HUMO ? null : cargar('met
 const guardarAjustes = () => { try { fs.writeFileSync(AJUSTES, JSON.stringify(ajustes)); } catch (e) { log('ajustes ' + e.message); } };
 const enviar = (canal, dato) => { cache[canal] = dato; win && !win.isDestroyed() && win.webContents.send(canal, dato); widgets.forEach(w => !w.isDestroyed() && w.webContents.send(canal, dato)); if (canal === 'correo') agendaAlOverlay(); };
 // agenda para el overlay: pinta como rectángulo el evento en curso (con hora) y colorea las alarmas
-const eventosOverlay = () => ((cache.correo && cache.correo.agenda) || []).map(e => ({ titulo: e.titulo, inicio: e.inicio, fin: e.fin, todoDia: e.todoDia, color: e.color })); // también los de todo el día: dan color a las alarmas del mismo nombre
+const eventosOverlay = () => ((cache.correo && cache.correo.agenda) || []).map(e => ({ titulo: e.titulo, inicio: e.inicio, fin: e.fin, todoDia: e.todoDia, color: e.color, ...Alarmas.cuadroArriba(e.categoria) })); // también los de todo el día: dan color a las alarmas del mismo nombre
 function agendaAlOverlay() { const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) ov.webContents.send('agenda', eventosOverlay()); }
 ipcMain.handle('agenda:lista', eventosOverlay);
 
@@ -90,7 +90,8 @@ function vigilarSistema() { // CPU/RAM/disco cada 2 s solo si alguien los está 
 }
 
 // ---- ventana: acrílico nativo (cubre toda la ventana), así que escondida se oculta; la «raya» del borde es otra ventanita aparte
-const area = () => screen.getPrimaryDisplay().workArea;
+const pantallaHumo = () => screen.getAllDisplays().find(d => d.bounds.x < 0) || screen.getPrimaryDisplay(); // la prueba de humo usa la pantalla de la izquierda (no la principal)
+const area = () => (HUMO ? pantallaHumo() : screen.getPrimaryDisplay()).workArea;
 const xAbierto = () => { const a = area(); return a.x + a.width - PW; };
 function crearVentana() {
   const a = area();
@@ -147,6 +148,7 @@ function cerrar() { ajustes.fijado = false; guardarAjustes(); poner(false); esta
 // Ctrl+Alt+A: abre fijado en la pestaña Alarmas (con foco); si ya está en Alarmas, cierra
 const pestanaActual = () => win.webContents.executeJavaScript(`document.querySelector('[data-tab][aria-selected="true"]')?.dataset.tab`).catch(() => null);
 function abrirAlarmas() { fijar(true); win.focus(); win.webContents.send('pestana', 'alarmas'); Alarmas.sincronizar(); }
+function nuevoEvento() { fijar(true); win.focus(); win.webContents.send('nuevo-evento'); } // Alt+C: abre la Agenda con el formulario de nuevo evento listo para escribir
 async function atajoAlarmas() { if (abierto && await pestanaActual() === 'alarmas') cerrar(); else abrirAlarmas(); }
 function fijar(b) { ajustes.fijado = !!b; guardarAjustes(); if (b) abrir(); estado(); tray && tray.setContextMenu(menu()); }
 function alternar() { // Ctrl+Alt+P: abre fijado / cierra
@@ -182,40 +184,60 @@ app.on('will-quit', () => { try { vigia && vigia.kill(); } catch {} });
 
 // ---- widgets del escritorio: la gráfica del Tiempo o la de Sistema en su propia ventanita transparente, arrastrable y sin ser «siempre encima»
 // (se queda con las demás ventanas). Posición y «abierto» se guardan en ajustes.widgets y se restauran al arrancar.
-const WIDGETS = { tiempo: { ancho: 380, nombre: 'Tiempo' }, sistema: { ancho: 320, nombre: 'Sistema' } };
-const pintarWidgets = () => { enviar('widgets', [...widgets.keys()]); tray && tray.setContextMenu(menu()); };
+const WIDGETS = { tiempo: { ancho: { p: 300, m: 380, g: 520 }, nombre: 'Tiempo' }, sistema: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Sistema' }, agenda: { ancho: { p: 280, m: 340, g: 440 }, nombre: 'Agenda' } };
+const CFG_BOOL = { tiempo: ['ciu', 'graf', 'ico', 'lluvia', 'tmp', 'res', 'det', 'dias'], sistema: ['cpu', 'ram', 'disco', 'disp', 'bat'], agenda: ['todo', 'lugar'] }; // qué se puede mostrar/ocultar en cada widget
+function cfgWidget(tipo, c = ajustes.widgets && ajustes.widgets[tipo] && ajustes.widgets[tipo].cfg) { // configuración saneada: tamaño (p/m/g) + interruptores (todos activos por defecto)
+  c = c && typeof c === 'object' ? c : {};
+  const n = { tam: ['p', 'm', 'g'].includes(c.tam) ? c.tam : 'm' };
+  CFG_BOOL[tipo].forEach(k => n[k] = c[k] !== false);
+  if (tipo === 'tiempo') n.ndias = [3, 5, 7].includes(c.ndias) ? c.ndias : 5;
+  if (tipo === 'agenda') { n.modo = c.modo === 'horas' ? 'horas' : 'eventos'; n.nh = [6, 10, 14].includes(c.nh) ? c.nh : 10; n.ndias = [1, 3, 7].includes(c.ndias) ? c.ndias : 3; }
+  return n;
+}
+const anchoWidget = tipo => WIDGETS[tipo].ancho[cfgWidget(tipo).tam];
+const pintarWidgets = () => { enviar('widgets', [...widgets.keys()]); enviar('widgetsCfg', Object.fromEntries([...widgets.keys()].map(t => [t, cfgWidget(t)]))); tray && tray.setContextMenu(menu()); };
 function posicionWidget(tipo) { // la guardada si sigue dentro de alguna pantalla; si no, esquina superior izquierda del monitor principal
-  const g = ajustes.widgets && ajustes.widgets[tipo], a = area(), w = WIDGETS[tipo].ancho;
+  const g = ajustes.widgets && ajustes.widgets[tipo], a = area(), w = anchoWidget(tipo);
   if (g && Number.isFinite(g.x) && Number.isFinite(g.y) && screen.getAllDisplays().some(d => { const b = d.workArea; return g.x + 60 > b.x && g.x < b.x + b.width - 60 && g.y >= b.y && g.y < b.y + b.height - 60; })) return { x: Math.round(g.x), y: Math.round(g.y) };
-  return { x: a.x + 40 + (tipo === 'sistema' ? w + 20 : 0), y: a.y + 60 };
+  return { x: a.x + 40 + (tipo === 'sistema' ? w + 20 : tipo === 'agenda' ? 2 * (w + 20) : 0), y: a.y + 60 };
 }
 function guardarWidget(tipo, abiertoW) {
   const w = widgets.get(tipo), b = w && !w.isDestroyed() ? w.getBounds() : ajustes.widgets && ajustes.widgets[tipo];
   ajustes.widgets = { ...ajustes.widgets, [tipo]: { ...(ajustes.widgets && ajustes.widgets[tipo]), x: b ? b.x : undefined, y: b ? b.y : undefined, abierto: abiertoW } }; guardarAjustes();
 }
-function ponerWidget(tipo, v) {
+const cargarWidget = (w, tipo) => w.loadFile('widget.html', { query: { tipo, cfg: JSON.stringify(cfgWidget(tipo)), estilo: (ajustes.widgets && ajustes.widgets[tipo] && ajustes.widgets[tipo].estilo) || 'cristal' } });
+function ponerWidget(tipo, v, c) { // `c` (opcional): configuración que se aplica al abrirlo (galería); si ya está abierto se recarga con ella
   if (!WIDGETS[tipo]) return;
   const w0 = widgets.get(tipo);
+  if (v && c && typeof c === 'object') {
+    ajustes.widgets = { ...ajustes.widgets, [tipo]: { ...(ajustes.widgets && ajustes.widgets[tipo]), cfg: cfgWidget(tipo, c) } }; guardarAjustes();
+    if (w0 && !w0.isDestroyed()) { const b = w0.getBounds(); w0.setBounds({ x: b.x, y: b.y, width: anchoWidget(tipo), height: b.height }); cargarWidget(w0, tipo); pintarWidgets(); return; }
+  }
   if (!v) { if (!w0) return; guardarWidget(tipo, false); widgets.delete(tipo); if (!w0.isDestroyed()) w0.destroy(); pintarWidgets(); vigilarSistema(); return; }
   if (w0 && !w0.isDestroyed()) return;
   const p = posicionWidget(tipo);
-  const w = new BrowserWindow({ ...p, width: WIDGETS[tipo].ancho, height: 200, frame: false, transparent: true, hasShadow: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, show: false, icon: ICONO,
+  const w = new BrowserWindow({ ...p, width: anchoWidget(tipo), height: 200, frame: false, transparent: true, hasShadow: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, show: false, icon: ICONO,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false } });
   widgets.set(tipo, w);
-  w.loadFile('widget.html', { query: { tipo, estilo: (ajustes.widgets && ajustes.widgets[tipo] && ajustes.widgets[tipo].estilo) || 'cristal' } });
-  w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); });
+  cargarWidget(w, tipo);
+  w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema', 'correo'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); });
   w.once('ready-to-show', () => { if (!completa) w.showInactive(); });
   w.on('moved', () => { if (widgets.get(tipo) === w) guardarWidget(tipo, true); });
   w.on('closed', () => { if (widgets.get(tipo) === w) { widgets.delete(tipo); pintarWidgets(); } });
   guardarWidget(tipo, true); pintarWidgets(); vigilarSistema();
 }
 const tipoWidget = wc => [...widgets].find(([, w]) => !w.isDestroyed() && w.webContents === wc)?.[0];
-ipcMain.on('widget:poner', (_, tipo, v) => ponerWidget(tipo, v === true));
+ipcMain.on('widget:poner', (_, tipo, v, c) => ponerWidget(tipo, v === true, c));
 ipcMain.on('widget:estilo', (e, est) => { const t = tipoWidget(e.sender); if (!t || !['cristal', 'fino', 'flotante', 'solido'].includes(est)) return; ajustes.widgets = { ...ajustes.widgets, [t]: { ...(ajustes.widgets && ajustes.widgets[t]), estilo: est } }; guardarAjustes(); });
+ipcMain.on('widget:cfg', (e, c) => {
+  const t = tipoWidget(e.sender); if (!t || !c || typeof c !== 'object') return;
+  ajustes.widgets = { ...ajustes.widgets, [t]: { ...(ajustes.widgets && ajustes.widgets[t]), cfg: cfgWidget(t, c) } }; guardarAjustes();
+  const w = widgets.get(t), b = w.getBounds(); w.setBounds({ x: b.x, y: b.y, width: anchoWidget(t), height: b.height }); pintarWidgets();
+});
 ipcMain.on('widget:cerrar', e => { const t = tipoWidget(e.sender); if (t) ponerWidget(t, false); });
 ipcMain.on('widget:alto', (e, h) => { // el widget mide su contenido; la ventana se ajusta (80–900 px)
   const t = tipoWidget(e.sender); if (!t || !Number.isFinite(h)) return;
-  const w = widgets.get(t), b = w.getBounds(); w.setBounds({ x: b.x, y: b.y, width: WIDGETS[t].ancho, height: Math.round(Math.min(900, Math.max(80, h))) });
+  const w = widgets.get(t), b = w.getBounds(); w.setBounds({ x: b.x, y: b.y, width: anchoWidget(t), height: Math.round(Math.min(900, Math.max(80, h))) });
 });
 
 // ---- actualización: pastilla en el panel y entradas en la bandeja; en pantalla completa no se enseña nada nuevo
@@ -387,11 +409,12 @@ app.whenReady().then(async () => {
   AJUSTES = path.join(app.getPath('userData'), 'ajustes.json');
   try { ajustes = { ...ajustes, ...JSON.parse(fs.readFileSync(AJUSTES, 'utf8')) }; } catch {}
   crearVentana();
-  Alarmas.iniciar({ app, log, HUMO, alAbrir: abrirAlarmas, ventanas: () => [win] });
+  Alarmas.iniciar({ app, log, HUMO, alAbrir: abrirAlarmas, alEtiquetas: agendaAlOverlay, ventanas: () => [win] });
   crearBandeja(); aplicarInicio();
   if (!globalShortcut.register('CommandOrControl+Alt+P', alternar)) log('no se pudo registrar Ctrl+Alt+P');
   if (!globalShortcut.register('CommandOrControl+Alt+A', atajoAlarmas)) log('no se pudo registrar Ctrl+Alt+A');
   if (!globalShortcut.register('CommandOrControl+Alt+D', Alarmas.descartar)) log('no se pudo registrar Ctrl+Alt+D');
+  if (!globalShortcut.register('Alt+C', nuevoEvento)) log('no se pudo registrar Alt+C');
   screen.on('display-metrics-changed', colocar);
   setInterval(sondear, 80);
   if (HUMO) return humo();
@@ -446,7 +469,7 @@ async function humo() {
   const salida = path.join(require('os').tmpdir(), 'panel-humo'); fs.mkdirSync(salida, { recursive: true });
   const js = (w, c) => w.webContents.executeJavaScript(c), esp = ms => new Promise(r => setTimeout(r, ms));
   const captura = async (n, w) => { try { fs.writeFileSync(path.join(salida, n + '.png'), (await w.webContents.capturePage()).toPNG()); } catch (e) { fallos.push('captura ' + n + ': ' + e.message); } };
-  for (const tema of ['', '-claro']) for (const t of ['alarmas', 'correo', 'agenda', 'tiempo', 'notas', 'sistema']) {
+  for (const tema of ['', '-claro']) for (const t of ['alarmas', 'correo', 'agenda', 'tiempo', 'notas', 'sistema', 'widgets']) {
     if (tema && t === 'alarmas') { nativeTheme.themeSource = 'light'; await esp(400); }
     if (!await js(win, `(b => b ? (b.click(), true) : false)(document.querySelector('button[data-tab="${t}"]'))`)) { fallos.push('falta el botón de la pestaña ' + t); continue; }
     if (t === 'alarmas' && !tema) { // el botón de sincronizar responde (en humo, sin leer nada real)
@@ -523,6 +546,15 @@ async function humo() {
   await js(win, `document.querySelector('.fr-b[data-d="-1"]').click()`); await esp(100);
   if (await n(win, '.fr-hoy') !== 0 || await n(win, '.fr-ya') !== 1) fallos.push('volver a hoy: gráfico incorrecto');
   // widgets del escritorio: se abren, pintan el mismo gráfico/barras que la pestaña, se ajustan de alto y se quitan con la ×
+  // galería: 7 variantes con vista previa; pulsar una abre el widget con esa configuración
+  await js(win, `document.querySelector('button[data-tab="widgets"]').click()`); await esp(500);
+  if (await js(win, `document.querySelectorAll('.wg').length`) !== 10 || await js(win, `document.querySelectorAll('.wg-v .fr-g, .wg-v .barra').length`) < 3) fallos.push('galería: faltan tarjetas o vistas previas');
+  await captura('panel-widgets-galeria', win);
+  await js(win, `document.querySelectorAll('.wg')[0].click()`); await esp(1200);
+  if (!widgets.has('tiempo') || cfgWidget('tiempo').dias !== false || cfgWidget('tiempo').tam !== 'p') fallos.push('galería: pulsar una variante no abre el widget con su configuración');
+  else if (await js(win, `document.querySelectorAll('.wg')[0].getAttribute('aria-pressed')`) !== 'true') fallos.push('galería: no marca la variante abierta');
+  ponerWidget('tiempo', false); delete ajustes.widgets.tiempo.cfg; await esp(200);
+  await js(win, `document.querySelector('button[data-tab="sistema"]').click()`); await esp(300); // la galería se vacía al salir de su pestaña
   ponerWidget('tiempo', true); ponerWidget('sistema', true); await esp(1200);
   const wt = widgets.get('tiempo'), ws = widgets.get('sistema');
   if (!wt || !ws) fallos.push('widgets: no se abren');
@@ -532,6 +564,19 @@ async function humo() {
     if (wt.getBounds().height <= 100 || ws.getBounds().height <= 100) fallos.push('widgets: el alto no se ajusta al contenido');
     await js(wt, `document.querySelector('.fr-b[data-d="1"]').click()`); await esp(150);
     if (await n(wt, '.fr-hoy') !== 1) fallos.push('widget Tiempo: las flechas de día no funcionan');
+    // configuración: tamaño grande (más ancho) y ocultar partes
+    await js(wt, `document.getElementById('w-g').click()`); await esp(100);
+    await js(wt, `document.querySelector('[data-tam=g]').click()`); await esp(300);
+    if (Math.abs(wt.getBounds().width - 520) > 2 || (ajustes.widgets.tiempo.cfg || {}).tam !== 'g') fallos.push('widget Tiempo: el tamaño no cambia/guarda (' + wt.getBounds().width + ')');
+    await js(wt, `document.querySelector('[data-niv=Mínimo]').click()`); await esp(200);
+    if (await n(wt, '.dias') !== 0 || await n(wt, '.ahora') !== 0 || await n(wt, '.fr-g') !== 1) fallos.push('widget Tiempo: el nivel Mínimo no oculta partes');
+    await js(wt, `document.querySelector('[data-niv=Completo]').click()`); await esp(150);
+    await js(wt, `document.querySelector('[data-tam=m]').click()`); await esp(300);
+    if (await n(wt, '.dias') !== 1 || await n(wt, '.det') < 1) fallos.push('widget Tiempo: el nivel Completo no muestra todo');
+    await js(wt, `document.getElementById('w-g').click()`); await esp(100);
+    await js(ws, `document.getElementById('w-g').click(); document.querySelector('[data-niv=Mínimo]').click()`); await esp(200);
+    if (await n(ws, '.barra') !== 2) fallos.push('widget Sistema: el nivel Mínimo no deja CPU y RAM');
+    await js(ws, `document.querySelector('[data-niv=Completo]').click(); document.getElementById('w-g').click()`); await esp(200);
     for (const est of ['cristal', 'fino', 'flotante', 'solido']) {
       await js(wt, `document.getElementById('w').dataset.estilo !== '${est}' && document.getElementById('w-e').click()`); await js(ws, `document.getElementById('w').dataset.estilo !== '${est}' && document.getElementById('w-e').click()`); await esp(300);
       await captura('widget-tiempo-' + est, wt); await captura('widget-sistema-' + est, ws);
@@ -543,6 +588,27 @@ async function humo() {
     await js(wt, `document.getElementById('w-x').click()`); await esp(300);
     if (widgets.has('tiempo')) fallos.push('widget Tiempo: la × no lo quita');
     ponerWidget('sistema', false); await esp(200);
+    // widget Agenda: modo eventos (lista) y modo horas (línea de tiempo) con datos inventados
+    {
+      const d = new Date(), previo = cache.correo, hh = Math.min(d.getHours(), 22); // eventos desde esta hora, para que caigan dentro de la línea de tiempo
+      const f = (h, mi) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, mi); const p = n => String(n).padStart(2, '0'); return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}T${p(x.getHours())}:${p(x.getMinutes())}:00`; };
+      enviar('correo', { ok: true, dias: 14, correos: [], categorias: [], agenda: [
+        { titulo: 'Reunión', inicio: f(hh, 0), fin: f(23, 59), todoDia: false, lugar: 'Sala 2', categoria: 'Trabajo', color: '#4a9eff', id: 'x1' },
+        { titulo: 'Solapado', inicio: f(hh, 30), fin: f(23, 59), todoDia: false, lugar: '', categoria: '', color: null, id: 'x2' },
+        { titulo: 'Festivo', inicio: f(0, 0), fin: f(0, 0), todoDia: true, lugar: '', categoria: '', color: '#ff9500', id: 'x3' }] });
+      ponerWidget('agenda', true, { tam: 'm', modo: 'eventos', ndias: 3, todo: true, lugar: true }); await esp(900);
+      const wa = widgets.get('agenda');
+      if (!wa) fallos.push('widget Agenda: no se abre');
+      else {
+        if (await n(wa, '.wev') < 2) fallos.push('widget Agenda: el modo eventos no pinta eventos');
+        await captura('widget-agenda-eventos', wa);
+        ponerWidget('agenda', true, { tam: 'm', modo: 'horas', nh: 10, todo: true, lugar: false, ndias: 3 }); await esp(900);
+        if (await n(wa, '.wh-b') < 2 || await n(wa, '.wchip') !== 1) fallos.push('widget Agenda: el modo horas no pinta bloques');
+        await captura('widget-agenda-horas', wa);
+      }
+      ponerWidget('agenda', false); await esp(200);
+      enviar('correo', previo); // deja los datos de la prueba como estaban
+    }
     if (widgets.size) fallos.push('widgets: quedan abiertos');
   }
   // varias ciudades: buscar «Alcalá», añadirla, cambiar de ciudad con las pestañitas y quitarla

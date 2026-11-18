@@ -42,7 +42,7 @@ h2 { font-size: 12px; font-weight: 600; color: var(--sec); text-transform: upper
 .aviso { color: var(--ambar); font-size: 11px; text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: auto; }
 /* pestañas: la pestaña activa es una gota de cristal que se desliza con rebote */
 #tabs { display: flex; gap: 2px; border-radius: 24px; padding: 3px; --i: 0; }
-#gota { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 14px) / 6); border-radius: 20px; background: var(--ac-v); box-shadow: 0 4px 14px var(--sombra), inset 0 0 12px var(--brillo);
+#gota { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 16px) / 7); border-radius: 20px; background: var(--ac-v); box-shadow: 0 4px 14px var(--sombra), inset 0 0 12px var(--brillo);
   transform: translateX(calc(var(--i) * (100% + 2px))); transition: transform .55s var(--ease); }
 #tabs button { flex: 1; width: auto; height: auto; padding: 5px 0 4px; display: flex; flex-direction: column; align-items: center; gap: 1px; position: relative; z-index: 1; font-size: 10px; border-radius: 20px; }
 #tabs button:hover { background: transparent; color: var(--txt); }
@@ -71,7 +71,7 @@ h2 { font-size: 12px; font-weight: 600; color: var(--sec); text-transform: upper
 .franja { display: block; border-radius: 24px; padding: 8px 4px 2px; }
 .fr-g { display: block; width: 100%; height: auto; overflow: visible; }
 .g1 { stop-color: var(--acento); stop-opacity: .55; } .g2 { stop-color: var(--acento); stop-opacity: 0; }
-.fr-a { fill: url(#gr); } .fr-l { fill: none; stroke: var(--acento); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px var(--ac-v)); }
+.fr-l { fill: none; stroke: var(--acento); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px var(--ac-v)); }
 .fr-e { stroke: var(--b2); stroke-width: 1; } .fr-ya { stroke: var(--acento); stroke-width: 1.2; stroke-linecap: round; }
 .fr-ll { fill: var(--ac-t); opacity: .6; } .pas { opacity: .45; } .fr-ll.pas { opacity: .3; }
 .fr-p { fill: var(--acento); } .fr-k { fill: var(--txt); stroke: var(--acento); stroke-width: 2; }
@@ -242,3 +242,29 @@ select.campo option { background: #2b2f38; color: #fff; }
 #ci-res { margin-top: 6px; display: grid; gap: 4px; }
 .ci-op { width: 100%; height: auto; padding: 7px 10px; text-align: left; border-radius: 14px; font-size: 13px; color: var(--txt); background: var(--vidrio-h); }
 .ci-op small { display: block; color: var(--sec); font-size: 11px; }
+
+/* pestaña Widgets: galería con la vista previa real (datos en vivo) de cada widget; clic = añadir/quitar del escritorio */
+.wgal { display: grid; gap: 12px; }
+.wg { display: block; width: 100%; height: auto; padding: 10px; text-align: left; border: 0; border-radius: 22px; padding: 10px; color: var(--txt); background: var(--vidrio); box-shadow: 0 6px 18px var(--sombra), inset 0 0 0 1px var(--b2); cursor: pointer; font: inherit; }
+.wg:hover { background: var(--vidrio-h); } .wg[aria-pressed=true] { box-shadow: 0 6px 18px var(--sombra), inset 0 0 0 2px var(--acento); }
+.wg-v { pointer-events: none; overflow: hidden; border-radius: 18px; }
+.wg-n { display: block; margin-top: 8px; font-size: 13px; font-weight: 600; } .wg small { display: block; font-size: 11px; color: var(--sec); }
+/* etiquetas de Outlook que suenan como alarma (pestaña Alarmas) */
+#al-etq { margin: 0 2px 8px; font-size: 12px; } #al-etq summary { cursor: pointer; color: var(--sec); }
+.etq { margin: 7px 0 9px; } .etq-t { display: flex; align-items: center; gap: 6px; } .etq .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.etq-f { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; padding-left: 16px; } .etq-c { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.etq .punto { width: 10px; height: 10px; border-radius: 5px; background: var(--sec); flex: none; } .etq input.campo { width: 60px; padding: 3px 6px; } .etq small { color: var(--sec); } .etq-nota { flex-basis: 100%; }
+
+/* widget Agenda: lista por días y línea de tiempo por horas */
+.wdia { color: var(--sec); font-weight: 600; font-size: 12px; margin: 8px 2px 3px; } .wdia:first-child { margin-top: 2px; } #w .wdia:first-child { padding-right: 76px; }
+.wev { --c: var(--sec); display: flex; gap: 8px; padding: 6px 10px 6px 14px; margin-bottom: 4px; border-radius: 16px; font-size: 12.5px; background: color-mix(in srgb, var(--c) 22%, var(--vidrio)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 45%, transparent), inset 4px 0 0 var(--c); }
+.wev .h { flex: none; width: 86px; color: var(--sec); } .wev .tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wev .tt small { display: block; color: var(--sec); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.wtodo { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; } #w .wtodo { padding-right: 76px; } .wchip { --c: var(--sec); padding: 1px 9px; border-radius: 10px; font-size: 11px; background: color-mix(in srgb, var(--c) 35%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 65%, transparent); }
+.wh { width: 100%; height: auto; display: block; overflow: visible; filter: drop-shadow(0 1px 2px var(--ts)); }
+.wh-l { stroke: var(--b2); stroke-width: 1; } .wh-h { fill: var(--sec); font-size: 10px; text-anchor: end; }
+.wh-b rect { fill-opacity: .38; stroke-width: 1.2; } .wh-b rect.sc { fill: var(--acento); stroke: var(--acento); }
+.wh-b text { fill: var(--txt); font-size: 11px; } .wh-b text.s { fill: var(--sec); font-size: 10px; } .wh-b.pas { opacity: .5; }
+.wh-ya { stroke: #ff6b5b; stroke-width: 1.5; } .wh-yc { fill: #ff6b5b; }
+.etq select.campo { width: auto; padding: 3px 6px; }
+#al-etq-b { margin: 6px 0 4px; padding: 5px 10px; } .etq[hidden] { display: none; }

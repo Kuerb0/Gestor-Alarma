@@ -20,6 +20,7 @@
     <button role="tab" id="t-tiempo" data-tab="tiempo" aria-controls="p-tiempo" aria-selected="false"><i>🌤️</i><span>Tiempo</span></button>
     <button role="tab" id="t-notas" data-tab="notas" aria-controls="p-notas" aria-selected="false"><i>📝</i><span>Notas</span></button>
     <button role="tab" id="t-sistema" data-tab="sistema" aria-controls="p-sistema" aria-selected="false"><i>📊</i><span>Sistema</span></button>
+    <button role="tab" id="t-widgets" data-tab="widgets" aria-controls="p-widgets" aria-selected="false"><i>🧩</i><span>Widgets</span></button>
   </nav>
   <div id="paneles">
     <section class="pestana" id="p-alarmas" role="tabpanel" aria-labelledby="t-alarmas" hidden>
@@ -37,6 +38,8 @@
       <h2 id="al-cuenta">Activas</h2>
       <div id="al-sinc"><button id="al-refrescar" class="btn-sec" title="Leer Outlook y Post-It ahora">⟳ Sincronizar</button><label class="v">Ver próximos <input id="al-ventana" class="campo" type="number" min="1" max="365"> días</label></div>
       <div id="al-estado"></div>
+      <details id="al-etq"><summary>Etiquetas de Outlook: alarma y/o evento arriba</summary><input id="al-etq-b" class="campo" type="search" placeholder="Buscar etiqueta…" aria-label="Buscar etiqueta"><div id="al-etq-l"></div><div id="al-etq-vacio" class="vacio" hidden>Ninguna etiqueta coincide</div>
+        <div class="ev-fila"><input id="al-etq-n" class="campo" maxlength="60" placeholder="Otra etiqueta…" aria-label="Nombre de otra etiqueta"><button id="al-etq-a" class="btn-sec">Añadir</button></div></details>
       <div id="al-lista"></div>
     </section>
     <section class="pestana" id="p-correo" role="tabpanel" aria-labelledby="t-correo" hidden>
@@ -78,6 +81,10 @@
     <section class="pestana" id="p-sistema" role="tabpanel" aria-labelledby="t-sistema" hidden>
       <h2><span>Sistema</span> <button class="btn-sec wd" data-w="sistema" aria-pressed="false" title="Poner estas barras como widget en el escritorio">🖥️ Widget</button></h2>
       <div id="sistema"></div></section>
+    <section class="pestana" id="p-widgets" role="tabpanel" aria-labelledby="t-widgets" hidden>
+      <h2><span>Widgets</span></h2>
+      <p class="vacio">Pulsa uno para ponerlo en el escritorio (otra vez para quitarlo). Luego se ajusta con el botón de ajustes del propio widget.</p>
+      <div id="widgets-g" class="wgal"></div></section>
   </div>
 </main>
 <script src="graficos.js"></script>

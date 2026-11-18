@@ -22,14 +22,16 @@ function alarmasDeNotas(notas, ahora, ventana = VENTANA_MS) {
   return out;
 }
 
-// Eventos de Outlook {id, titulo, inicio (ISO local), todo_dia, categoria} con la etiqueta, con hora y en los próximos 14 días.
-// Cuentan hacia el inicio y suenan AVISO_MS antes (`aviso`, ver fase() en tiempo.js).
-function eventosAAlarmas(eventos, ahora, etiqueta = ETIQUETA, ventana = VENTANA_MS) {
-  const out = [];
+// Eventos de Outlook {id, titulo, inicio (ISO local), todo_dia, categoria} cuya categoría esté entre las `etiquetas` elegidas, con hora y dentro del límite de días de SU etiqueta.
+// `etiquetas` = [{ nombre, dias }] (o un nombre suelto + `ventana` en ms, como antes). Cuentan hacia el inicio y suenan AVISO_MS antes (`aviso`, ver fase() en tiempo.js).
+const topes = (etiquetas, ventana) => new Map((typeof etiquetas === 'string' ? [{ nombre: etiquetas, dias: ventana / 864e5 }] : etiquetas || []).map(t => [norm(t.nombre), t.dias * 864e5]));
+function eventosAAlarmas(eventos, ahora, etiquetas = ETIQUETA, ventana = VENTANA_MS) {
+  const out = [], lim = topes(etiquetas, ventana);
   for (const e of eventos || []) {
-    if (e.todo_dia || norm(e.categoria) !== norm(etiqueta)) continue;
+    const ms = lim.get(norm(e.categoria));
+    if (e.todo_dia || ms === undefined) continue;
     const t = new Date(e.inicio).getTime();
-    if (!Number.isFinite(t) || !dentro(t, ahora, ventana)) continue;
+    if (!Number.isFinite(t) || !dentro(t, ahora, ms)) continue;
     out.push({ id: `outlook:${e.id}`, tipo: 'fecha', nombre: String(e.titulo || 'Evento').slice(0, 60), objetivo: t, origen: 'outlook', aviso: AVISO_MS, avisada: true });
   }
   return out;
@@ -56,17 +58,17 @@ const etiquetar = (eventos, cache) => (eventos || []).map(e => e.categoria ? e :
 const leer = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 
 // → { ok, postit: [alarmas], outlook: [alarmas] | null (null = no se pudo leer: que el llamador conserve lo anterior), fuente }
-async function sincronizar(appData, ahora = Date.now(), cache = {}, ventana = VENTANA_MS) {
+async function sincronizar(appData, ahora = Date.now(), cache = {}, ventana = VENTANA_MS, etiquetas = [{ nombre: ETIQUETA, dias: ventana / 864e5 }]) { // `ventana`: días de Post-It; cada etiqueta lleva los suyos
   let P;
   try { P = { E: require(path.join(RAIZ, 'eventos.js')), S: require(path.join(RAIZ, 'sync.js')) }; }
   catch { return { ok: false, motivo: 'No encuentro Post-It en ' + RAIZ }; }
   const base = path.join(appData, 'post-it'), carpeta = (leer(path.join(base, 'sync.json')) || {}).sync || path.join(base, 'datos');
   const { notas, ajustes, colores } = P.S.fusionar(P.S.leerSync(carpeta));
-  const o = await P.E.obtener({ ics: ajustes.ics, cache: colores && colores.titulos ? colores : P.E.cacheVacia(), desde: new Date(ahora), hasta: new Date(ahora + Math.max(120 * 864e5, ventana + 2 * 864e5)) }); // mínimo 120 días: así la memoria de categorías aprende también lo lejano
+  const o = await P.E.obtener({ ics: ajustes.ics, cache: colores && colores.titulos ? colores : P.E.cacheVacia(), desde: new Date(ahora), hasta: new Date(ahora + Math.max(120 * 864e5, ventana + 2 * 864e5, ...etiquetas.map(t => (t.dias + 2) * 864e5))) }); // mínimo 120 días: así la memoria de categorías aprende también lo lejano
   const leido = o.fuente === 'outlook' || o.fuente === 'ics';
   if (o.fuente === 'outlook') recordarCategorias(cache, o.eventos);
   const eventos = o.fuente === 'ics' ? etiquetar(o.eventos, cache) : o.eventos;
-  return { ok: true, postit: alarmasDeNotas(notas, ahora, ventana), outlook: leido ? eventosAAlarmas(eventos, ahora, ETIQUETA, ventana) : null, fuente: o.fuente };
+  return { ok: true, postit: alarmasDeNotas(notas, ahora, ventana), outlook: leido ? eventosAAlarmas(eventos, ahora, etiquetas) : null, fuente: o.fuente };
 }
 
 module.exports = { sincronizar, alarmasDeNotas, eventosAAlarmas, recordarCategorias, etiquetar, ETIQUETA, AVISO_MS };

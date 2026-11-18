@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema', 'actualizacion', 'widgets'];
+const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema', 'actualizacion', 'widgets', 'widgetsCfg', 'nuevo-evento'];
 contextBridge.exposeInMainWorld('api', {
   on: (canal, fn) => { if (CANALES.includes(canal)) ipcRenderer.on(canal, (_, d) => fn(d)); },
   abrirCorreo: id => ipcRenderer.send('abrir-correo', id),
@@ -16,9 +16,10 @@ contextBridge.exposeInMainWorld('api', {
   buscarCiudad: t => ipcRenderer.invoke('lugares:buscar', t),
   anadirCiudad: l => ipcRenderer.invoke('lugares:anadir', l),
   quitarCiudad: k => ipcRenderer.invoke('lugares:quitar', k),
-  widget: (tipo, poner) => ipcRenderer.send('widget:poner', tipo, !!poner), // widgets del escritorio
+  widget: (tipo, poner, cfg) => ipcRenderer.send('widget:poner', tipo, !!poner, cfg), // widgets del escritorio
   widgetAlto: h => ipcRenderer.send('widget:alto', h),
   widgetEstilo: e => ipcRenderer.send('widget:estilo', e),
+  widgetCfg: c => ipcRenderer.send('widget:cfg', c),
   widgetCerrar: () => ipcRenderer.send('widget:cerrar'),
   fijar: b => ipcRenderer.send('fijar', !!b),
   actualizar: () => ipcRenderer.send('actualizar'),
@@ -32,12 +33,14 @@ contextBridge.exposeInMainWorld('alarmas', {
   crear: r => ipcRenderer.invoke('alarmas:crear', r),
   editar: (id, r) => ipcRenderer.invoke('alarmas:editar', id, r),
   borrar: id => ipcRenderer.invoke('alarmas:borrar', id),
+  ocultar: id => ipcRenderer.invoke('alarmas:ocultar', id), // quita una alarma traída de Outlook (sigue en Outlook)
   cerrar: () => ipcRenderer.send('cerrar'), // cierra el panel
   formato: () => ipcRenderer.invoke('ajustes:formato'),
   alFormato: cb => ipcRenderer.on('formato', (_, f) => cb(f)),
   syncEstado: () => ipcRenderer.invoke('sync:estado'),
   syncAhora: () => ipcRenderer.invoke('sync:ahora'),
   syncVentana: d => ipcRenderer.invoke('sync:ventana', d),
+  syncEtiquetas: l => ipcRenderer.invoke('sync:etiquetas', l),
   alSync: cb => ipcRenderer.on('sync', (_, s) => cb(s)),
   alCambiar: cb => ipcRenderer.on('alarmas', (_, l) => cb(l)),
   agenda: () => ipcRenderer.invoke('agenda:lista'), // eventos de la agenda (los que están pasando salen como cuadrados en el overlay)

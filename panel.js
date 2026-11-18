@@ -50,6 +50,7 @@ function ir(n, foco = true) {
   $('tabs').style.setProperty('--i', NOMBRES.indexOf(n));
   try { localStorage.setItem('pestana', n); } catch {}
   if (n === 'alarmas' && foco) $('al-rapido').focus();
+  if (n === 'widgets') queueMicrotask(pintaWidgets); else $('widgets-g').replaceChildren(); // fuera de la pestaña no queda nada (evita ids y gráficos duplicados)
   if (n === 'notas') queueMicrotask(notasCargar); // tras cargar el script: `notas` ya existe
 }
 TABS.forEach(t => t.onclick = () => ir(t.dataset.tab));
@@ -71,7 +72,7 @@ document.addEventListener('keydown', e => { // Esc: vacía el campo con texto de
 // ---- tiempo
 let meteo = null, meteoT = 0, diaSel = 0, ciudadSel = ''; // diaSel: día que muestra el gráfico (0 = hoy, 1 = mañana…); el dibujo está en graficos.js
 try { ciudadSel = localStorage.getItem('ciudad') || ''; } catch {}
-function pintaMeteo() { const o = htmlCiudades(meteo, ciudadSel, diaSel, meteoT, true); diaSel = o.dia; ciudadSel = o.sel; $('tiempo').innerHTML = o.html; }
+function pintaMeteo() { const o = htmlCiudades(meteo, ciudadSel, diaSel, meteoT, true); diaSel = o.dia; ciudadSel = o.sel; $('tiempo').innerHTML = o.html; pintaWidgets(); }
 
 // ---- correo
 function fechaCorta(iso) {
@@ -384,13 +385,30 @@ $('nt-lista').addEventListener('click', e => {
 });
 
 // ---- sistema
-const pintaSistema = () => { $('sistema').innerHTML = htmlSistema(sis, bateria); };
+const pintaSistema = () => { $('sistema').innerHTML = htmlSistema(sis, bateria); pintaWidgets(); };
+// ---- pestaña Widgets: galería con vista previa en vivo; la estructura se crea una vez y solo se refrescan las vistas y los «en el escritorio»
+let wAbiertos = [], wCfgs = {};
+const wOn = v => wAbiertos.includes(v.tipo) && Object.keys(v.cfg).every(k => (wCfgs[v.tipo] || {})[k] === v.cfg[k]);
+function pintaWidgets() {
+  const g = $('widgets-g'); if (!g || $('p-widgets').hidden) return;
+  if (!g.children.length) g.innerHTML = WVARIANTES.map((v, i) => `<button class="wg" data-i="${i}" aria-pressed="false"><div class="wg-v"></div><span class="wg-n">${esc(v.nombre)}</span><small></small></button>`).join('');
+  const dispo = Math.max(160, g.clientWidth - 22);
+  [...g.children].forEach((b, i) => {
+    const v = WVARIANTES[i], ancho = WANCHO[v.tipo][v.cfg.tam], el = b.firstElementChild, on = wOn(v), cfg = { ...v.cfg, uid: 'v' + i };
+    el.style.setProperty('width', ancho + 'px'); el.style.setProperty('zoom', Math.min(1, dispo / ancho));
+    el.innerHTML = v.tipo === 'agenda' ? htmlAgenda(correo, cfg) : v.tipo === 'tiempo' ? htmlCiudades(meteo, ciudadSel, 0, meteoT, false, cfg).html : sis || bateria ? htmlSistema(sis, bateria, cfg) : '<div class="vacio">Cargando…</div>';
+    colorea(el); b.setAttribute('aria-pressed', on); b.lastElementChild.textContent = on ? 'En el escritorio · pulsa para quitarlo' : 'Pulsa para añadirlo al escritorio';
+  });
+}
+$('widgets-g').addEventListener('click', e => { const b = e.target.closest('.wg'), v = b && WVARIANTES[+b.dataset.i]; if (v) api.widget(v.tipo, !wOn(v), v.cfg); });
+api.on('widgetsCfg', c => { wCfgs = c || {}; pintaWidgets(); });
 if (navigator.getBattery) navigator.getBattery().then(b => { bateria = b; b.onlevelchange = b.onchargingchange = pintaSistema; pintaSistema(); }).catch(() => {});
 
 // ---- IPC
 api.on('correo', r => { if (!r || !r.ok || r.obsoleto || (r.dias || 7) > agN) { agCarga = false; clearTimeout(agTimer); } pintaCorreo(r); });
 api.on('meteo', r => { meteo = r; meteoT = Date.now(); pintaMeteo(); });
 api.on('pestana', n => ir(n));
+api.on('nuevo-evento', () => { ir('agenda'); evAbrir(); }); // Alt+C
 api.on('tema', t => t && /^#[0-9a-f]{6}$/i.test(t.acento) && document.documentElement.style.setProperty('--acento', t.acento));
 api.on('actualizacion', a => { // pastilla «Nueva versión X» (solo si hay y no es pantalla completa)
   $('nueva').hidden = !a; if (!a) return;
@@ -401,6 +419,7 @@ api.on('actualizacion', a => { // pastilla «Nueva versión X» (solo si hay y n
 $('nueva-ok').onclick = () => api.instalarActualizacion(); $('nueva-tarde').onclick = () => api.masTarde();
 api.on('sistema', s => { sis = s; pintaSistema(); });
 document.querySelectorAll('.wd').forEach(b => b.onclick = () => api.widget(b.dataset.w, b.getAttribute('aria-pressed') !== 'true')); // widgets del escritorio
+api.on('widgets', l => { wAbiertos = Array.isArray(l) ? l : []; pintaWidgets(); });
 api.on('widgets', l => document.querySelectorAll('.wd').forEach(b => { const on = Array.isArray(l) && l.includes(b.dataset.w); b.setAttribute('aria-pressed', on); b.textContent = on ? '🖥️ Quitar widget' : '🖥️ Widget'; }));
 api.on('estado', e => { document.body.classList.toggle('abierto', e.abierto); $('pin').classList.toggle('on', e.fijado); $('pin').setAttribute('aria-pressed', !!e.fijado); if (e.abierto) reloj(); });
 reloj(); pintaAgenda();

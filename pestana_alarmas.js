@@ -68,7 +68,10 @@
       const f = el('div', 'fila'), n = el('span', 'n', a.nombre), t = el('span', 't'), s = el('small', '', a.tipo === 'crono' ? '▲' : a.tipo === 'fecha' ? hm(a.objetivo) : a.tipo === 'recurrente' ? '↻ ' + Tiempo.etiquetaDias(a.dias) + ' ' + p2(a.hh) + ':' + p2(a.mm) : '▼');
       f.dataset.id = a.id; n.title = s.textContent; n.append(' ', s);
       if (/^#[0-9a-f]{6}$/i.test(a.color)) { n.classList.add('c'); n.style.setProperty('--c', a.color); } // color de su etiqueta de Outlook
-      if (a.origen) { f.classList.add('ext'); f.append(n, t, el('small', '', a.origen === 'outlook' ? 'Outlook' : 'Post-It')); } // traídas de fuera: solo lectura
+      if (a.origen) { // traídas de fuera: solo lectura; las de Outlook se pueden quitar de aquí (siguen en Outlook)
+        f.classList.add('ext'); f.append(n, t, el('small', '', a.origen === 'outlook' ? 'Outlook' : 'Post-It'));
+        if (a.origen === 'outlook') { const bq = el('button', 'btn-sec', 'Quitar'); bq.title = 'Quitar de las alarmas (sigue en Outlook)'; bq.onclick = () => al.ocultar(a.id); f.append(bq); }
+      }
       else {
         const be = el('button', 'btn-sec', 'Editar'), bb = el('button', 'btn-sec', 'Borrar');
         be.onclick = () => editar(a); bb.onclick = () => al.borrar(a.id); f.append(n, t, be, bb);
@@ -106,9 +109,51 @@
   }
   $('al-refrescar').onclick = async () => { $('al-refrescar').disabled = true; sync = await al.syncAhora(); pintarSync(); };
   $('al-ventana').addEventListener('change', async () => { sync = await al.syncVentana($('al-ventana').value); pintarSync(); });
-  al.syncEstado().then(s => { sync = s; pintarSync(); });
-  al.alSync(s => { sync = s; pintarSync(); });
+  al.syncEstado().then(s => { sync = s; pintarSync(); pintarEtiquetas(); });
+  al.alSync(s => { const nueva = !sync || JSON.stringify(s.etiquetas) !== JSON.stringify(sync.etiquetas); sync = s; pintarSync(); if (nueva) pintarEtiquetas(); });
   setInterval(pintarSync, 1000);
+
+  // ---- etiquetas de Outlook elegidas, cada una con su límite de días (las del buzón salen del canal «correo»; se pueden añadir otras a mano)
+  let cats = [];
+  const casilla = (cls, txt, on) => { const l = el('label', 'etq-c'), c = document.createElement('input'); c.type = 'checkbox'; c.className = cls; c.checked = on; l.append(c, ' ' + txt); return l; };
+  function pintarEtiquetas() { // por etiqueta: «Suena como alarma» (con sus días) y «Sale arriba como evento»; con las dos, se pone como alarma
+    const sel = (sync && sync.etiquetas) || [], l = $('al-etq-l'); if (!sync || l.contains(document.activeElement)) return;
+    const nombres = [...cats.map(c => c.nombre), ...sel.map(s => s.nombre)].filter((n, i, a) => a.findIndex(m => m.toLowerCase() === n.toLowerCase()) === i);
+    l.textContent = '';
+    nombres.forEach(n => {
+      const s = sel.find(x => x.nombre.toLowerCase() === n.toLowerCase()), c = cats.find(x => x.nombre === n), f = el('div', 'etq'), top = el('div', 'etq-t'), fila = el('div', 'etq-f');
+      const p = el('i', 'punto'); if (c && c.color) p.style.setProperty('background', c.color);
+      const d = document.createElement('input'); d.type = 'number'; d.min = 1; d.max = 365; d.className = 'campo e-d'; d.value = s ? s.dias : sync.ventanaDias; d.setAttribute('aria-label', 'Días de ' + n);
+      const al = s ? s.alarma : false, ev = s ? s.evento : true, am = s ? s.antes : 60; // sin entrada: sale como evento (como siempre)
+      const [av, au] = am && am % 1440 === 0 ? [am / 1440, 1440] : am && am % 60 === 0 ? [am / 60, 60] : [am, 1]; // lo mayor que sea exacto: días, horas o minutos
+      const da = document.createElement('input'); da.type = 'number'; da.min = 0; da.className = 'campo e-an'; da.value = av; da.disabled = !ev; da.setAttribute('aria-label', 'Cuánto antes sale ' + n);
+      const ua = document.createElement('select'); ua.className = 'campo e-au'; ua.disabled = !ev; ua.setAttribute('aria-label', 'Unidad');
+      [[1, 'min'], [60, 'horas'], [1440, 'días']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; o.selected = v === au; ua.append(o); });
+      f.dataset.n = n; d.disabled = !al; top.append(p, el('span', 'n', n));
+      fila.append(casilla('e-al', 'Suena como alarma', al), d, el('small', '', 'días'), casilla('e-ev', 'Sale arriba como evento', ev), el('small', '', 'desde'), da, ua, el('small', '', 'antes'));
+      f.append(top, fila);
+      if (al && ev) f.append(el('small', 'etq-nota', 'Con las dos: se pone como alarma'));
+      l.append(f);
+    });
+    filtrarEtiquetas();
+  }
+  const quitaAcentos = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  function filtrarEtiquetas() { // el buscador esconde las que no contienen el texto (sin mayúsculas ni acentos)
+    const q = quitaAcentos($('al-etq-b').value.trim()); let n = 0;
+    document.querySelectorAll('#al-etq-l .etq').forEach(f => { const ok = !q || quitaAcentos(f.dataset.n).includes(q); f.hidden = !ok; if (ok) n++; });
+    $('al-etq-vacio').hidden = n > 0 || !document.querySelector('#al-etq-l .etq');
+  }
+  $('al-etq-b').addEventListener('input', filtrarEtiquetas);
+  async function guardarEtiquetas() {
+    const lista = [...document.querySelectorAll('#al-etq-l .etq')].map(f => ({ nombre: f.dataset.n, dias: +f.querySelector('.e-d').value || 14, alarma: f.querySelector('.e-al').checked, evento: f.querySelector('.e-ev').checked, antes: Math.round((+f.querySelector('.e-an').value || 0) * +f.querySelector('.e-au').value) }));
+    sync = await al.syncEtiquetas(lista); pintarSync(); pintarEtiquetas();
+  }
+  $('al-etq-l').addEventListener('change', e => { if (!['checkbox', 'number', 'select-one'].includes(e.target.type)) return;
+    const f = e.target.closest('.etq'); f.querySelector('.e-d').disabled = !f.querySelector('.e-al').checked; f.querySelector('.e-an').disabled = f.querySelector('.e-au').disabled = !f.querySelector('.e-ev').checked; // el foco sigue en la casilla: no se repinta
+    guardarEtiquetas(); });
+  const añadirEtq = () => { const n = $('al-etq-n').value.trim(); if (!n) return; $('al-etq-n').value = ''; const ya = [...document.querySelectorAll('#al-etq-l .etq')].find(f => f.dataset.n.toLowerCase() === n.toLowerCase()); if (ya) return; sync.etiquetas = [...sync.etiquetas, { nombre: n, dias: sync.ventanaDias, alarma: true, evento: false, antes: 60 }]; pintarEtiquetas(); guardarEtiquetas(); };
+  $('al-etq-a').onclick = añadirEtq; $('al-etq-n').addEventListener('keydown', e => { if (e.key === 'Enter') añadirEtq(); });
+  window.api && window.api.on('correo', r => { if (r && r.ok && Array.isArray(r.categorias)) { cats = r.categorias; pintarEtiquetas(); } });
 
   [[1, 'L'], [2, 'M'], [3, 'X'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']].forEach(([v, l]) => { // casillas de los días (0 = domingo)
     const lab = el('label', 'dia'), inp = document.createElement('input');

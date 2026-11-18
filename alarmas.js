@@ -5,7 +5,7 @@ const T = require('./tiempo'), Puente = require('./puente'), Salida = require('.
 
 const ICONO = path.join(__dirname, 'assets', 'icon.png');
 const W = 260, H = 480; // el overlay es transparente y click-through: tener más espacio del necesario no estorba
-let app, log, HUMO, ventanas = () => [], alAbrir = () => {};
+let app, log, HUMO, ventanas = () => [], alAbrir = () => {}, alEtiquetas = () => {};
 let DIR, DATOS, AJUSTES, alarmas = [], externas = [], descartadasExt = new Set(), sincronizando = false, promesaSync = null, ultimoSync = null, exportando = false, pendientesBorrar = [], proximoIntentoOutlook = 0, categorias = {}, ajustes = { formato: 'adaptativo', ventanaDias: 14, calendarioOutlook: '' }, overlay;
 
 // ---- disco: escritura atómica con copia .bak de la versión anterior
@@ -46,7 +46,25 @@ function descartar() { // Ctrl+Alt+D: silencia y descarta lo que suena y lo que 
 
 // ---- Post-It y Outlook (solo lectura): cada 30 s, al abrir la pestaña y con su botón; si Outlook no se pudo leer se conserva lo último
 const ventanaMs = () => Math.min(365, Math.max(1, Math.round(ajustes.ventanaDias) || 14)) * 864e5; // días que se ven por delante
-const estadoSync = () => ({ ventanaDias: ventanaMs() / 864e5, ultimo: ultimoSync, trabajando: sincronizando });
+// Etiquetas de Outlook que suenan como alarma, cada una con su límite de días. Sin elegir nada: solo «Alarma», con los días de `ventanaDias`.
+// Cada etiqueta: `alarma` (suena como alarma, hasta `dias` días) y/o `evento` (se muestra arriba como cuadro del evento en curso). Si tiene las dos, se ve como alarma (sin cuadro).
+// Una categoría sin entrada se muestra como evento, como siempre.
+const etiquetas = () => Array.isArray(ajustes.etiquetas) ? ajustes.etiquetas : [{ nombre: Puente.ETIQUETA, dias: ventanaMs() / 864e5, alarma: true, evento: false, antes: 60 }];
+const normE = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+// ¿Sale el evento de esa categoría como cuadro arriba, y desde cuántos minutos antes de empezar? (`antes`, por etiqueta; 60 por defecto)
+function cuadroArriba(categoria) { const t = etiquetas().find(x => normE(x.nombre) === normE(categoria)); return t ? { cuadro: !!t.evento && !t.alarma, antes: t.antes, listada: true } : { cuadro: true, antes: 60, listada: false }; } // los de todo el día solo salen si su etiqueta está en la lista
+function limpiarEtiquetas(l) {
+  const vistas = new Set(), out = [];
+  for (const e of Array.isArray(l) ? l : []) {
+    const nombre = e && typeof e.nombre === 'string' ? e.nombre.trim().slice(0, 60) : '', dias = Math.round(Number(e && e.dias)), k = nombre.toLowerCase();
+    if (!nombre || !Number.isFinite(dias) || vistas.has(k) || out.length >= 200) continue;
+    vistas.add(k); out.push({ nombre, dias: Math.min(365, Math.max(1, dias)), alarma: !e || e.alarma !== false, evento: !!(e && e.evento), antes: Number.isFinite(Number(e && e.antes)) ? Math.min(43200, Math.max(0, Math.round(Number(e.antes)))) : 60 });
+  }
+  return out;
+}
+// Alarmas de Outlook que el usuario ha quitado de la lista (siguen en Outlook; aquí ya no suenan ni salen). Se guardan por id.
+const ocultas = () => Array.isArray(ajustes.ocultas) ? ajustes.ocultas : [];
+const estadoSync = () => ({ ventanaDias: ventanaMs() / 864e5, etiquetas: etiquetas(), ultimo: ultimoSync, trabajando: sincronizando });
 const avisarSync = () => destinos().forEach(w => w.webContents.send('sync', estadoSync()));
 function sincronizar() { // si ya hay una lectura en curso, devuelve esa misma
   if (HUMO) return Promise.resolve(estadoSync());
@@ -55,12 +73,12 @@ function sincronizar() { // si ya hay una lectura en curso, devuelve esa misma
   promesaSync = (async () => {
     try {
       const antes = JSON.stringify(categorias);
-      const r = await Puente.sincronizar(app.getPath('appData'), Date.now(), categorias, ventanaMs()); // rellena `categorias` (título→categoría) si Outlook está abierto
+      const r = await Puente.sincronizar(app.getPath('appData'), Date.now(), categorias, ventanaMs(), etiquetas().filter(t => t.alarma)); // rellena `categorias` (título→categoría) si Outlook está abierto
       if (JSON.stringify(categorias) !== antes) escribir(path.join(DIR, 'categorias.json'), categorias);
       if (!r.ok) ultimoSync = { t: Date.now(), error: r.motivo };
       else {
         const previoOutlook = externas.filter(a => a.origen === 'outlook');
-        externas = [...r.postit, ...(r.outlook || previoOutlook)].map(a => descartadasExt.has(a.id) ? { ...a, descartada: true } : a);
+        externas = [...r.postit, ...(r.outlook || previoOutlook)].filter(a => !ocultas().includes(a.id)).map(a => descartadasExt.has(a.id) ? { ...a, descartada: true } : a);
         ultimoSync = { t: Date.now(), fuente: r.fuente, postit: r.postit.length, outlook: r.outlook ? r.outlook.length : null };
         enviar(); exportarOutlook(); // aprovecha el ciclo para reintentar lo pendiente
       }
@@ -95,7 +113,7 @@ async function exportarOutlook() {
 
 // ---- overlay: fichas split-flap arriba a la derecha, click-through
 function colocarOverlay() {
-  const a = screen.getPrimaryDisplay().workArea;
+  const a = (HUMO ? screen.getAllDisplays().find(d => d.bounds.x < 0) || screen.getPrimaryDisplay() : screen.getPrimaryDisplay()).workArea; // en la prueba de humo: pantalla de la izquierda
   overlay.setBounds({ x: a.x + a.width - W - 12, y: a.y + 12, width: W, height: Math.min(H, a.height - 24) });
 }
 function crearOverlay() {
@@ -122,6 +140,11 @@ ipcMain.handle('sync:ventana', async (_, d) => {
   if (HUMO) return estadoSync();
   await promesaSync; return sincronizar(); // una lectura ya en marcha usaba la ventana vieja
 });
+ipcMain.handle('sync:etiquetas', async (_, l) => { // elegir qué etiquetas de Outlook suenan como alarma y hasta cuántos días por delante
+  ajustes.etiquetas = limpiarEtiquetas(l); escribir(AJUSTES, ajustes); alEtiquetas();
+  if (HUMO) return estadoSync();
+  await promesaSync; return sincronizar();
+});
 ipcMain.handle('ajustes:formato', () => ajustes.formato === 'completo' ? 'completo' : 'adaptativo');
 ipcMain.handle('alarmas:crear', (_, r) => {
   const v = T.validar(r, Date.now()); if (!v.ok) return v;
@@ -134,6 +157,11 @@ ipcMain.handle('alarmas:editar', (_, id, r) => {
   const ant = alarmas[i], nueva = { id, creada: Date.now(), ...v.rec, ...(ant.color && { color: ant.color }) };
   if (ant.outlookId) { if (nueva.tipo === 'fecha') { nueva.outlookId = ant.outlookId; nueva.outlookHuella = ant.outlookHuella; } else borrarEnOutlook(ant.outlookId); }
   alarmas[i] = nueva; guardar(); exportarOutlook(); return ok();
+});
+ipcMain.handle('alarmas:ocultar', (_, id) => {
+  if (typeof id !== 'string' || !id.startsWith('outlook:') || id.length > 400) return { ok: false, error: 'No se puede quitar' };
+  if (!ocultas().includes(id)) { ajustes.ocultas = [...ocultas(), id].slice(-500); escribir(AJUSTES, ajustes); }
+  externas = externas.filter(a => a.id !== id); enviar(); return ok();
 });
 ipcMain.handle('alarmas:borrar', (_, id) => {
   const a = alarmas.find(x => x.id === id); if (a && a.outlookId) borrarEnOutlook(a.outlookId);
@@ -151,12 +179,14 @@ const menuItems = () => [
 ];
 
 function iniciar(o) { // llamar con la app lista; `ventanas()` devuelve las ventanas del panel que también reciben los envíos
-  ({ app, log, HUMO } = o); if (o.ventanas) ventanas = o.ventanas; if (o.alAbrir) alAbrir = o.alAbrir;
+  ({ app, log, HUMO } = o); if (o.ventanas) ventanas = o.ventanas; if (o.alAbrir) alAbrir = o.alAbrir; if (o.alEtiquetas) alEtiquetas = o.alEtiquetas;
   DIR = HUMO ? app.getPath('userData') : path.join(app.getPath('appData'), 'gestor-alarmas'); // los datos del Gestor, para no perder nada
   fs.mkdirSync(DIR, { recursive: true });
   DATOS = path.join(DIR, 'alarmas.json'); AJUSTES = path.join(DIR, 'ajustes.json');
   const aj = leer(AJUSTES, {}); // de ahí solo lo nuestro; iniciarConWindows se ignora
   ['formato', 'ventanaDias', 'calendarioOutlook'].forEach(k => { if (aj[k] !== undefined) ajustes[k] = aj[k]; });
+  if (Array.isArray(aj.ocultas)) ajustes.ocultas = aj.ocultas.filter(x => typeof x === 'string');
+  if (Array.isArray(aj.etiquetas)) ajustes.etiquetas = limpiarEtiquetas(aj.etiquetas);
   categorias = leer(path.join(DIR, 'categorias.json'), {});
   pendientesBorrar = leer(PEND(), []).filter(x => typeof x === 'string');
   alarmas = leer(DATOS, []).filter(a => a && a.id && T.fase(a, 0)); // descarta registros dañados
@@ -188,4 +218,4 @@ function datosHumo() {
   guardar();
 }
 
-module.exports = { iniciar, descartar, sincronizar, menuItems, datosHumo, overlay: () => overlay };
+module.exports = { cuadroArriba, iniciar, descartar, sincronizar, menuItems, datosHumo, overlay: () => overlay };

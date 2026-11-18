@@ -49,4 +49,8 @@ assert.strictEqual(P.eventosAAlarmas(ev, AHORA, 'Alarma', 30 * 864e5).length, 3)
 assert.deepStrictEqual(P.eventosAAlarmas(ev, AHORA, 'Alarma', 864e5).map(a => a.nombre), ['Reunión', 'Mañana pronto']);
 assert.strictEqual(P.eventosAAlarmas(ev, AHORA, 'Alarma', 3 * 36e5).length, 1);                     // con 3 h solo la de las 15:00
 assert.strictEqual(P.alarmasDeNotas(notas, AHORA, 30 * 864e5).length, 2);                           // y «Lejos» (10/12) con 30 días
+// varias etiquetas, cada una con su límite de días
+const ev2 = [{ id: 'p', titulo: 'P', inicio: iso(15, 0, 17), todo_dia: false, categoria: 'Trabajo' }, { id: 'q', titulo: 'Q', inicio: iso(15, 0, 25), todo_dia: false, categoria: 'Trabajo' }, { id: 'r', titulo: 'R', inicio: iso(15, 0, 25), todo_dia: false, categoria: 'Alarma' }, { id: 's', titulo: 'S', inicio: iso(15, 0, 17), todo_dia: false, categoria: 'Otra' }];
+assert.deepStrictEqual(P.eventosAAlarmas(ev2, AHORA, [{ nombre: 'trabajo', dias: 3 }, { nombre: 'Alarma', dias: 14 }]).map(a => a.nombre), ['P', 'R']);
+assert.deepStrictEqual(P.eventosAAlarmas(ev2, AHORA, []).length, 0);
 console.log('TEST OK');

@@ -80,10 +80,10 @@ function colorAgenda(a) {
   return e ? e.color : null;
 }
 // ---- agenda: cuadrado con borde del color de la etiqueta para el evento en curso (cuenta atrás hasta su fin, «−12:34») y, la hora anterior, hasta su inicio (borde discontinuo)
-const MAXQ = 3, elsQ = new Map();
+const MAXQ = 6, elsQ = new Map();
 let agenda = [];
 function pintarAgenda(ahora) {
-  const en = agenda.filter(e => !e.todoDia && e.fin).map(e => ({ ...e, i: +new Date(e.inicio), f: +new Date(e.fin), k: e.titulo + '|' + e.inicio })).filter(e => e.i - 36e5 <= ahora && ahora < e.f)
+  const en = agenda.filter(e => e.cuadro !== false && (e.fin || e.todoDia) && (!e.todoDia || e.listada)).map(e => ({ ...e, i: +new Date(e.inicio), f: +new Date(e.fin || +new Date(e.inicio) + 864e5), k: e.titulo + '|' + e.inicio })).filter(e => e.i - (e.antes ?? 60) * 6e4 <= ahora && ahora < e.f)
     .sort((a, b) => (a.i > ahora) - (b.i > ahora) || (a.i > ahora ? a.i - b.i : a.f - b.f)).slice(0, MAXQ); // primero los en curso (el que acaba antes), luego los próximos; el orden final con las alarmas lo da pintar()
   for (const [k, e] of elsQ) if (!en.some(x => x.k === k)) { e.remove(); elsQ.delete(k); }
   return en.map(ev => {
@@ -92,7 +92,7 @@ function pintarAgenda(ahora) {
     if (/^#[0-9a-f]{6}$/i.test(ev.color)) e.style.setProperty('--bc', ev.color); else e.style.removeProperty('--bc');
     dibujar(e.querySelector('.nom'), ev.titulo.toUpperCase().slice(0, 16));
     const pronto = ev.i > ahora; e.classList.toggle('pronto', pronto);
-    dibujar(e.querySelector('.hora'), '−' + Tiempo.formatear((pronto ? ev.i : ev.f) - ahora, false, formato));
+    dibujar(e.querySelector('.hora'), (pronto ? '' : '−') + Tiempo.formatear((pronto ? ev.i : ev.f) - ahora, false, formato));
     e.title = ev.titulo + (pronto ? ' · empieza a las ' : ' · hasta ') + new Date(pronto ? ev.i : ev.f).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     return { e, p: 2, v: (pronto ? ev.i : ev.f) - ahora };
   });
