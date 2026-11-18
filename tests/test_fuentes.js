@@ -35,7 +35,7 @@ const lugar = { nombre: 'Madrid', lat: 40.4, lon: -3.7 };
 const m = armar(j, lugar, new Date(2026, 10, 16, 14, 20));
 assert.strictEqual(m.ok, true); assert.deepStrictEqual(m.lugar, lugar);
 assert.deepStrictEqual(m.actual, { temp: 18, codigo: 3, texto: 'Nublado', icono: '☁️', viento: 12 });
-assert.strictEqual(m.horas.length, 24); assert.strictEqual(m.horas[0].hora, '00:00'); assert.strictEqual(m.horas[23].hora, '23:00'); assert.strictEqual(m.horas[0].temp, 0); assert.strictEqual(m.ahora, 14.25);
+assert.strictEqual(m.horas.length, 24); assert.strictEqual(m.horas[0].hora, '00:00'); assert.strictEqual(m.horas[23].hora, '23:00'); assert.strictEqual(m.horas[0].temp, 0.4); assert.strictEqual(m.ahora, 14.25);
 assert.strictEqual(m.horas[0].icono, '🌧️'); assert.strictEqual(m.horas[0].lluvia, 30);
 assert.strictEqual(m.dias.length, 5);
 assert.deepStrictEqual(m.dias.map(d => d.nombre), ['Hoy', 'Mañana', 'Mié', 'Jue', 'Vie']);
@@ -62,5 +62,5 @@ for (const mal of [null, 'x', { ...ev, titulo: '  ' }, { ...ev, titulo: 'a'.repe
   { ...ev, fin: ev.inicio }, { ...ev, fin: '2030-01-01T09:00:00' }, { ...ev, categoria: 3 }, { ...ev, lugar: {} }]) assert.ok(validarEvento(mal), JSON.stringify(mal));
 assert.strictEqual(validarEvento({ ...ev, titulo: 'a'.repeat(200) }), null);
 // armar: cada día trae sus 24 h (para ver mañana/pasado en el gráfico); el último día sin horas completas no revienta
-assert.strictEqual(m.dias[1].horas.length, 24); assert.strictEqual(m.dias[1].horas[0].temp, 24); assert.deepStrictEqual(m.dias[2].horas, []);
+assert.strictEqual(m.dias[1].horas.length, 24); assert.strictEqual(m.dias[1].horas[0].temp, 24.4); assert.deepStrictEqual(m.dias[2].horas, []);
 assert.deepStrictEqual(m.dias[0].horas, m.horas);

@@ -30,10 +30,10 @@ function armar(j, lugar, ahora) {
   const c = j.current, h = j.hourly, d = j.daily, m = j.minutely_15;
   const horaLocal = (c.time || `${ymd(ahora)}T${dd(ahora.getHours())}:00`).slice(0, 13);
   const hoy = horaLocal.slice(0, 10);
-  const delDia = f => { // las 24 h de un día (f = 'AAAA-MM-DD')
+  const delDia = f => { // las 24 h de un día (f = 'AAAA-MM-DD'); `temp` con 1 decimal: la curva del gráfico lo necesita (los textos redondean)
     let i = h.time.findIndex(t => t.slice(0, 10) === f); if (i < 0) { if (f !== hoy) return []; i = 0; } // hoy sin coincidencia: las primeras 24 h
     return h.time.slice(i, i + 24).map((t, k) => ({
-      hora: t.slice(11, 13) + ':00', temp: r(h.temperature_2m[i + k]), icono: wmo(h.weather_code[i + k]).icono, lluvia: r(h.precipitation_probability[i + k] || 0),
+      hora: t.slice(11, 13) + ':00', temp: Math.round(Number(h.temperature_2m[i + k]) * 10) / 10, icono: wmo(h.weather_code[i + k]).icono, lluvia: r(h.precipitation_probability[i + k] || 0),
       viento: campo(h.wind_speed_10m, i + k), humedad: campo(h.relative_humidity_2m, i + k), sens: campo(h.apparent_temperature, i + k),
       presion: campo(h.pressure_msl, i + k), nubes: campo(h.cloud_cover, i + k), uv: campo(h.uv_index, i + k),
     }));
@@ -45,7 +45,7 @@ function armar(j, lugar, ahora) {
     m.time.forEach((t, k) => {
       if (t.slice(0, 10) !== f) return;
       const hh = Number(t.slice(11, 13)), mi = Number(t.slice(14, 16)) || 0, hora = horas.find(x => x.hora === dd(hh) + ':00');
-      pts.push({ hora: dd(hh) + ':' + dd(mi), hd: hh + mi / 60, temp: campo(m.temperature_2m, k), lluvia: campo(m.precipitation_probability, k) || 0, icono: mi === 0 && hora ? hora.icono : '' });
+      pts.push({ hora: dd(hh) + ':' + dd(mi), hd: hh + mi / 60, temp: m.temperature_2m[k] != null ? Math.round(Number(m.temperature_2m[k]) * 10) / 10 : null, lluvia: campo(m.precipitation_probability, k) || 0, icono: mi === 0 && hora ? hora.icono : '' });
     });
     return pts;
   };
