@@ -29,6 +29,10 @@ function pintaCfg() {
   $('w-cfg').innerHTML = `${ag}${tipo === 'tiempo' && cfg.graf !== false ? selHoras : ''}<div class="cfg-f"><span>Tamaño</span>${tam}</div><div class="cfg-f"><span>Detalle</span>${niv}</div><div class="cfg-g">${sw}</div>${nd}`;
 }
 $('w-g').onclick = () => { const h = $('w-cfg').hidden; $('w-cfg').hidden = !h; $('w-g').setAttribute('aria-expanded', h); if (h) pintaCfg(); };
+document.addEventListener('contextmenu', e => { // clic derecho: abre el panel de ajustes (con el rango de horas) y lo deja a la vista
+  e.preventDefault(); if ($('w-cfg').hidden) { $('w-cfg').hidden = false; $('w-g').setAttribute('aria-expanded', true); pintaCfg(); }
+  const s = $('w-cfg').querySelector('[data-hh]'); if (s) s.focus();
+});
 $('w-cfg').addEventListener('click', e => {
   const b = e.target.closest('.cfg-b'); if (!b) return;
   if (b.dataset.tam) { cfg.tam = b.dataset.tam; $('w').classList.remove('fijo'); } // elegir un tamaño vuelve al automático
