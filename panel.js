@@ -454,7 +454,7 @@ $('agenda').addEventListener('keydown', e => { if (e.target.classList.contains('
 if (window.alarmas) { window.alarmas.lista().then(l => { alarmasL = l; marcaEventos(); }); window.alarmas.alCambiar(l => { alarmasL = l; marcaEventos(); }); }
 
 // ---- notas rápidas (main las guarda en %APPDATA%\panel\notas.json; cada cambio manda la lista entera)
-let notas = null, notaEdit = null, notaBorrar = null, notaT = 0;
+let notasPidiendo = false, notas = null, notaEdit = null, notaBorrar = null, notaT = 0;
 async function notasCargar() {
   if (!notas) { try { notas = await api.notasLeer(); } catch { notas = []; } }
   pintaNotas();
@@ -500,12 +500,13 @@ let wAbiertos = [], wCfgs = {};
 const wOn = v => wAbiertos.includes(v.tipo) && Object.keys(v.cfg).every(k => (wCfgs[v.tipo] || {})[k] === v.cfg[k]);
 function pintaWidgets() {
   const g = $('widgets-g'); if (!g || $('p-widgets').hidden) return;
+  if (!notas && !notasPidiendo) { notasPidiendo = true; notasCargar().finally(() => { notasPidiendo = false; pintaWidgets(); }); }
   if (!g.children.length) g.innerHTML = WVARIANTES.map((v, i) => `<button class="wg" data-i="${i}" aria-pressed="false"><div class="wg-v"></div><span class="wg-n">${esc(v.nombre)}</span><small></small></button>`).join('');
   const dispo = Math.max(160, g.clientWidth - 22);
   [...g.children].forEach((b, i) => {
     const v = WVARIANTES[i], ancho = WANCHO[v.tipo][v.cfg.tam], el = b.firstElementChild, on = wOn(v), cfg = { ...v.cfg, uid: 'v' + i };
     el.style.setProperty('width', ancho + 'px'); el.style.setProperty('zoom', Math.min(1, dispo / ancho));
-    el.innerHTML = v.tipo === 'agenda' ? htmlAgenda(correo, cfg) : v.tipo === 'tiempo' ? htmlCiudades(meteo, ciudadSel, 0, meteoT, false, cfg).html : sis || bateria ? htmlSistema(sis, bateria, cfg) : '<div class="vacio">Cargando…</div>';
+    el.innerHTML = v.tipo === 'agenda' ? htmlAgenda(correo, cfg) : v.tipo === 'notas' ? htmlNotas(notas, cfg) : v.tipo === 'tiempo' ? htmlCiudades(meteo, ciudadSel, 0, meteoT, false, cfg).html : sis || bateria ? htmlSistema(sis, bateria, cfg) : '<div class="vacio">Cargando…</div>';
     colorea(el); b.setAttribute('aria-pressed', on); b.lastElementChild.textContent = on ? 'En el escritorio · pulsa para quitarlo' : 'Pulsa para añadirlo al escritorio';
   });
 }
@@ -515,6 +516,7 @@ if (navigator.getBattery) navigator.getBattery().then(b => { bateria = b; b.onle
 
 // ---- IPC
 api.on('correo', r => { if (!r || !r.ok || r.obsoleto || (r.dias || 7) > agN) { agCarga = false; clearTimeout(agTimer); } pintaCorreo(r); });
+api.on('notas', l => { notas = l; if (notaEdit === null) pintaNotas(); pintaWidgets(); }); // cambios desde el widget de Notas
 api.on('meteo', r => { meteo = r; meteoT = Date.now(); pintaMeteo(); });
 api.on('pestana', n => ir(n));
 api.on('nuevo-evento', () => { ir('agenda'); evAbrir(); }); // Alt+C

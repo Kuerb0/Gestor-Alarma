@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema', 'actualizacion', 'widgets', 'widgetsCfg', 'nuevo-evento'];
+const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema', 'actualizacion', 'widgets', 'widgetsCfg', 'nuevo-evento', 'notas'];
 contextBridge.exposeInMainWorld('api', {
   on: (canal, fn) => { if (CANALES.includes(canal)) ipcRenderer.on(canal, (_, d) => fn(d)); },
   abrirCorreo: id => ipcRenderer.send('abrir-correo', id),
@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   borrarEvento: ev => ipcRenderer.invoke('agenda:borrar', ev),
   editarEvento: ev => ipcRenderer.invoke('agenda:editar', ev),
   notasLeer: () => ipcRenderer.invoke('notas:leer'),
+  notasAnadir: t => ipcRenderer.invoke('notas:anadir', t),
   notasGuardar: lista => ipcRenderer.invoke('notas:guardar', lista),
   usoCategorias: () => ipcRenderer.invoke('uso:categorias'),
   usoGuardarCategorias: c => ipcRenderer.invoke('uso:guardarCategorias', c),

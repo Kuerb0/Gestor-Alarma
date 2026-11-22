@@ -236,8 +236,8 @@ app.on('will-quit', () => { try { uso && uso.cerrar(); } catch {} try { vigia &&
 
 // ---- widgets del escritorio: la gráfica del Tiempo o la de Sistema en su propia ventanita transparente, arrastrable y sin ser «siempre encima»
 // (se queda con las demás ventanas). Posición y «abierto» se guardan en ajustes.widgets y se restauran al arrancar.
-const WIDGETS = { tiempo: { ancho: { p: 300, m: 380, g: 520 }, nombre: 'Tiempo' }, sistema: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Sistema' }, agenda: { ancho: { p: 280, m: 340, g: 440 }, nombre: 'Agenda' } };
-const CFG_BOOL = { tiempo: ['ciu', 'graf', 'ico', 'lluvia', 'tmp', 'res', 'det', 'dias'], sistema: ['cpu', 'ram', 'disco', 'disp', 'bat'], agenda: ['todo', 'lugar'] }; // qué se puede mostrar/ocultar en cada widget
+const WIDGETS = { tiempo: { ancho: { p: 300, m: 380, g: 520 }, nombre: 'Tiempo' }, sistema: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Sistema' }, agenda: { ancho: { p: 280, m: 340, g: 440 }, nombre: 'Agenda' }, notas: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Notas' } };
+const CFG_BOOL = { tiempo: ['ciu', 'graf', 'ico', 'lluvia', 'tmp', 'res', 'det', 'dias'], sistema: ['cpu', 'ram', 'disco', 'disp', 'bat'], agenda: ['todo', 'lugar'], notas: ['fecha', 'nueva'] }; // qué se puede mostrar/ocultar en cada widget
 function cfgWidget(tipo, c = ajustes.widgets && ajustes.widgets[tipo] && ajustes.widgets[tipo].cfg) { // configuración saneada: tamaño (p/m/g) + interruptores (todos activos por defecto)
   c = c && typeof c === 'object' ? c : {};
   const n = { tam: ['p', 'm', 'g'].includes(c.tam) ? c.tam : 'm' };
@@ -255,7 +255,7 @@ const pintarWidgets = () => { enviar('widgets', [...widgets.keys()]); enviar('wi
 function posicionWidget(tipo) { // la guardada si sigue dentro de alguna pantalla; si no, esquina superior izquierda del monitor principal
   const g = ajustes.widgets && ajustes.widgets[tipo], a = area(), w = anchoWidget(tipo);
   if (g && Number.isFinite(g.x) && Number.isFinite(g.y) && screen.getAllDisplays().some(d => { const b = d.workArea; return g.x + 60 > b.x && g.x < b.x + b.width - 60 && g.y >= b.y && g.y < b.y + b.height - 60; })) return { x: Math.round(g.x), y: Math.round(g.y) };
-  return { x: a.x + 40 + (tipo === 'sistema' ? w + 20 : tipo === 'agenda' ? 2 * (w + 20) : 0), y: a.y + 60 };
+  return { x: a.x + 40 + (tipo === 'sistema' ? w + 20 : tipo === 'agenda' ? 2 * (w + 20) : tipo === 'notas' ? 3 * (w + 20) : 0), y: a.y + 60 };
 }
 function guardarWidget(tipo, abiertoW) {
   const w = widgets.get(tipo), b = w && !w.isDestroyed() ? w.getBounds() : ajustes.widgets && ajustes.widgets[tipo];
@@ -276,7 +276,7 @@ function ponerWidget(tipo, v, c) { // `c` (opcional): configuración que se apli
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false } });
   widgets.set(tipo, w);
   cargarWidget(w, tipo);
-  w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema', 'correo'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); });
+  w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema', 'correo', 'notas'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); });
   w.once('ready-to-show', () => { if (!completa) w.showInactive(); });
   w.on('moved', () => { if (widgets.get(tipo) === w) guardarWidget(tipo, true); });
   w.on('closed', () => { if (widgets.get(tipo) === w) { widgets.delete(tipo); pintarWidgets(); } });
@@ -471,7 +471,13 @@ function guardarNotas(lista) {
   catch (e) { log('notas ' + e.message); return { ok: false, motivo: 'error' }; }
 }
 ipcMain.handle('notas:leer', leerNotas);
-ipcMain.handle('notas:guardar', (_, lista) => guardarNotas(lista));
+ipcMain.handle('notas:guardar', (_, lista) => { const r = guardarNotas(lista); if (r.ok) enviar('notas', leerNotas()); return r; });
+ipcMain.handle('notas:anadir', (_, texto) => { // desde el widget de Notas: la nota nueva va la primera
+  if (typeof texto !== 'string') return { ok: false, motivo: 'texto no válido' };
+  texto = texto.trim().slice(0, 5000); if (!texto) return { ok: false, motivo: 'vacía' };
+  const l = leerNotas(); l.unshift({ id: crypto.randomUUID(), texto, creada: new Date().toISOString() });
+  const r = guardarNotas(l); if (r.ok) enviar('notas', leerNotas()); return r;
+});
 // ---- categorías del uso (reglas en categorias_uso.json; se aplican al leer)
 const CatUso = require('./categorias_uso'), CATS_USO = () => path.join(app.getPath('userData'), 'categorias_uso.json');
 let catsUso = null;
@@ -525,6 +531,7 @@ app.whenReady().then(async () => {
   setInterval(vigilarFichas, 1000);
   screen.on('display-metrics-changed', colocar);
   setInterval(sondear, 80);
+  cache.notas = leerNotas(); // para que los widgets de Notas la tengan al abrirse
   if (HUMO) return humo().catch(e => { console.log('HUMO FALLA\nexcepción: ' + (e && e.stack || e)); app.exit(1); }); // si la prueba lanza, sale en vez de quedarse colgada
   vigilarCompleta();
   Object.keys(WIDGETS).forEach(t => ajustes.widgets && ajustes.widgets[t] && ajustes.widgets[t].abierto && ponerWidget(t, true));
@@ -682,7 +689,7 @@ async function humo() {
   // widgets del escritorio: se abren, pintan el mismo gráfico/barras que la pestaña, se ajustan de alto y se quitan con la ×
   // galería: 7 variantes con vista previa; pulsar una abre el widget con esa configuración
   await js(win, `document.querySelector('button[data-tab="widgets"]').click()`); await esp(500);
-  if (await js(win, `document.querySelectorAll('.wg').length`) !== 10 || await js(win, `document.querySelectorAll('.wg-v .fr-g, .wg-v .barra').length`) < 3) fallos.push('galería: faltan tarjetas o vistas previas');
+  if (await js(win, `document.querySelectorAll('.wg').length`) !== 12 || await js(win, `document.querySelectorAll('.wg-v .fr-g, .wg-v .barra').length`) < 3) fallos.push('galería: faltan tarjetas o vistas previas');
   await captura('panel-widgets-galeria', win);
   await js(win, `document.querySelectorAll('.wg')[0].click()`); await esp(1200);
   if (!widgets.has('tiempo') || cfgWidget('tiempo').dias !== false || cfgWidget('tiempo').tam !== 'p') fallos.push('galería: pulsar una variante no abre el widget con su configuración');
@@ -788,6 +795,18 @@ async function humo() {
   await js(win, `(t => { t.value = 'Nota de prueba'; t.dispatchEvent(new Event('input')); document.getElementById('nt-form').requestSubmit(); })(document.getElementById('nt-texto'))`); await esp(300);
   if (await n(win, '.nota') !== 1) fallos.push('notas: no se añade la nota');
   await captura('panel-notas-nueva', win);
+  // widget de Notas: pinta la lista, y una nota escrita en él (Intro) llega al panel
+  ponerWidget('notas', true, { tam: 'm', fecha: true, nueva: true }); await esp(900);
+  { const wn = widgets.get('notas');
+    if (!wn) fallos.push('widget Notas: no se abre');
+    else {
+      if (!(await js(wn, `document.getElementById('w-c').textContent.includes('Nota de prueba')`))) fallos.push('widget Notas: no enseña la nota');
+      await captura('widget-notas', wn);
+      await js(wn, `(t => { t.value = 'Nota desde el widget'; t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); })(document.getElementById('wn-texto'))`); await esp(500);
+      if (await n(win, '.nota') !== 2) fallos.push('widget Notas: la nota escrita no llega al panel');
+      if (await n(wn, '.wn-nota') !== 2) fallos.push('widget Notas: no se actualiza tras añadir');
+    }
+    ponerWidget('notas', false); await esp(200); }
   console.log(fallos.length ? 'HUMO FALLA\n' + fallos.join('\n') : 'HUMO OK · capturas en ' + salida);
   app.exit(fallos.length ? 1 : 0);
 }

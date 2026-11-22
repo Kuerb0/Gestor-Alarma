@@ -54,3 +54,4 @@ body { padding: 10px; height: auto; overflow: hidden; }
 #w:hover #w-r { opacity: .65; } #w-r:hover { opacity: 1 !important; }
 #w.fijo { height: calc(100vh - 20px); overflow-y: auto; scrollbar-width: none; }
 #w.fijo::-webkit-scrollbar { display: none; }
+#wn-texto { border: 1px solid var(--b1, rgba(128,128,128,.45)); background: rgba(128,128,128,.10); border-radius: 12px; padding: 6px 9px; } /* el cuadro de nota nueva se ve en todos los estilos (en consumo el fondo es transparente) */

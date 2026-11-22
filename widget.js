@@ -1,19 +1,25 @@
 // Widget del escritorio: la misma gráfica que una pestaña del panel (tipo = tiempo | sistema), en su propia ventana.
 const $ = id => document.getElementById(id);
-const tipo = ['sistema', 'agenda'].includes(new URLSearchParams(location.search).get('tipo')) ? new URLSearchParams(location.search).get('tipo') : 'tiempo';
-let correo = null, meteo = null, meteoT = 0, diaSel = 0, sis = null, bateria = null, ciudadSel = '';
+const tipo = ['sistema', 'agenda', 'notas'].includes(new URLSearchParams(location.search).get('tipo')) ? new URLSearchParams(location.search).get('tipo') : 'tiempo';
+let notas = null, correo = null, meteo = null, meteoT = 0, diaSel = 0, sis = null, bateria = null, ciudadSel = '';
 try { ciudadSel = localStorage.getItem('wciudad') || ''; } catch {}
-document.getElementById('w').classList.toggle('sis', tipo === 'sistema');
+document.getElementById('w').classList.toggle('sis', tipo === 'sistema' || tipo === 'notas');
 function pinta() {
   if (tipo === 'tiempo') { const o = htmlCiudades(meteo, ciudadSel, diaSel, meteoT, false, cfg); diaSel = o.dia; ciudadSel = o.sel; $('w-c').innerHTML = o.html; }
   else if (tipo === 'agenda') { diaSel = clamp(diaSel, 0, maxDiaAg(correo)); $('w-c').innerHTML = htmlAgenda(correo, { ...cfg, dia: diaSel }); colorea($('w-c')); }
+  else if (tipo === 'notas') pintaNotasW();
   else $('w-c').innerHTML = sis || bateria ? htmlSistema(sis, bateria, cfg) : '<div class="vacio">Cargando…</div>';
 }
+function pintaNotasW() { // si se está escribiendo una nota, solo se repinta la lista (el cuadro conserva texto y foco)
+  const t = $('wn-texto'), l = $('w-c').querySelector('.wn-lista');
+  if (t && l && cfg.nueva !== false && (t.value || document.activeElement === t)) { const tmp = document.createElement('div'); tmp.innerHTML = htmlNotas(notas, cfg); l.replaceWith(tmp.querySelector('.wn-lista')); return; }
+  $('w-c').innerHTML = htmlNotas(notas, cfg);
+}
 // ---- configuración: tamaño (pequeño/mediano/grande) y qué información se ve; se guarda en los ajustes y la ventana cambia de ancho sola
-const SEC = tipo === 'agenda' ? [['todo', 'Todo el día'], ['lugar', 'Lugar']] : tipo === 'tiempo'
+const SEC = tipo === 'notas' ? [['fecha', 'Fecha'], ['nueva', 'Añadir']] : tipo === 'agenda' ? [['todo', 'Todo el día'], ['lugar', 'Lugar']] : tipo === 'tiempo'
   ? [['ciu', 'Ciudades'], ['graf', 'Gráfico'], ['ico', 'Iconos'], ['lluvia', 'Lluvia'], ['tmp', 'Temp. cada 3 h'], ['res', 'Resumen'], ['det', 'Detalles'], ['dias', 'Próx. días']]
   : [['cpu', 'CPU'], ['ram', 'RAM'], ['disco', 'Disco'], ['disp', 'Dispositivos'], ['bat', 'Batería']];
-const NIVELES = tipo === 'agenda' ? { Mínimo: { todo: 0, lugar: 0 }, Normal: { todo: 1, lugar: 0 }, Completo: { todo: 1, lugar: 1 } } : tipo === 'tiempo' // atajos: de «solo lo básico» a «todo»
+const NIVELES = tipo === 'notas' ? { Mínimo: { fecha: 0, nueva: 0 }, Normal: { fecha: 1, nueva: 0 }, Completo: { fecha: 1, nueva: 1 } } : tipo === 'agenda' ? { Mínimo: { todo: 0, lugar: 0 }, Normal: { todo: 1, lugar: 0 }, Completo: { todo: 1, lugar: 1 } } : tipo === 'tiempo' // atajos: de «solo lo básico» a «todo»
   ? { Mínimo: { ciu: 0, graf: 1, ico: 0, lluvia: 0, tmp: 0, res: 0, det: 0, dias: 0 }, Normal: { ciu: 1, graf: 1, ico: 1, lluvia: 1, tmp: 1, res: 1, det: 0, dias: 1 }, Completo: { ciu: 1, graf: 1, ico: 1, lluvia: 1, tmp: 1, res: 1, det: 1, dias: 1 } }
   : { Mínimo: { cpu: 1, ram: 1, disco: 0, disp: 0, bat: 0 }, Normal: { cpu: 1, ram: 1, disco: 1, disp: 0, bat: 1 }, Completo: { cpu: 1, ram: 1, disco: 1, disp: 1, bat: 1 } };
 let cfg = { tam: 'm', ndias: tipo === 'agenda' ? 3 : 5, modo: 'eventos', h0: tipo === 'agenda' ? 8 : 0, h1: tipo === 'agenda' ? 20 : 24 }; try { cfg = { ...cfg, ...JSON.parse(new URLSearchParams(location.search).get('cfg')) }; } catch {}
@@ -66,6 +72,10 @@ try { if (!localStorage.getItem('estilo-consumo-' + tipo)) { localStorage.setIte
 const aplicaEstilo = () => { $('w').dataset.estilo = estilo; $('w-e').title = 'Estilo: ' + estilo + ' (clic para cambiar)'; };
 aplicaEstilo();
 $('w-e').onclick = () => { estilo = ESTILOS[(ESTILOS.indexOf(estilo) + 1) % ESTILOS.length]; aplicaEstilo(); api.widgetEstilo(estilo); };
+$('w-c').addEventListener('keydown', e => { // Intro guarda la nota nueva; Mayús+Intro = salto de línea
+  if (e.target.id !== 'wn-texto' || e.key !== 'Enter' || e.shiftKey) return;
+  e.preventDefault(); const v = e.target.value.trim(); if (!v) return; e.target.value = ''; api.notasAnadir(v);
+});
 $('w-x').onclick = () => api.widgetCerrar();
 $('w-c').addEventListener('click', e => {
   const b = e.target.closest('.fr-b'), c = e.target.closest('.ciu-n');
@@ -74,6 +84,7 @@ $('w-c').addEventListener('click', e => {
 });
 api.on('tema', t => t && /^#[0-9a-f]{6}$/i.test(t.acento) && document.documentElement.style.setProperty('--acento', t.acento));
 if (tipo === 'tiempo') { api.on('meteo', r => { meteo = r; meteoT = Date.now(); pinta(); }); setInterval(pinta, 6e4); } // la rayita de ahora avanza sola
+else if (tipo === 'notas') api.on('notas', l => { notas = l; pinta(); });
 else if (tipo === 'agenda') { api.on('correo', r => { correo = r; pinta(); }); setInterval(pinta, 6e4); } // la línea de «ahora» avanza sola
 else {
   api.on('sistema', s => { sis = s; pinta(); });

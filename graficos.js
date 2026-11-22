@@ -81,7 +81,7 @@ function detalles(hs, o = {}) {
   return s ? `<div class="det">${s}</div>` : '';
 }
 // Galería de widgets (pestaña «Widgets»): cada variante = un tipo + su configuración completa. WANCHO = ancho real de la ventana (como en main.js).
-const WANCHO = { tiempo: { p: 300, m: 380, g: 520 }, sistema: { p: 260, m: 320, g: 420 }, agenda: { p: 280, m: 340, g: 440 } };
+const WANCHO = { tiempo: { p: 300, m: 380, g: 520 }, sistema: { p: 260, m: 320, g: 420 }, agenda: { p: 280, m: 340, g: 440 }, notas: { p: 260, m: 320, g: 420 } };
 const WVARIANTES = [
   { tipo: 'tiempo', nombre: 'Tiempo · Gráfico', cfg: { tam: 'p', ciu: false, graf: true, ico: false, lluvia: false, tmp: true, res: false, det: false, dias: false, ndias: 5 } },
   { tipo: 'tiempo', nombre: 'Tiempo · Ahora y próximos días', cfg: { tam: 'p', ciu: false, graf: false, ico: true, lluvia: true, tmp: true, res: true, det: false, dias: true, ndias: 3 } },
@@ -93,6 +93,8 @@ const WVARIANTES = [
   { tipo: 'agenda', nombre: 'Agenda · Hoy por horas', cfg: { tam: 'm', modo: 'horas', nh: 10, todo: true, lugar: false, ndias: 3 } },
   { tipo: 'agenda', nombre: 'Agenda · Próximos eventos', cfg: { tam: 'm', modo: 'eventos', nh: 10, todo: true, lugar: true, ndias: 3 } },
   { tipo: 'agenda', nombre: 'Agenda · Semana', cfg: { tam: 'g', modo: 'eventos', nh: 10, todo: true, lugar: true, ndias: 7 } },
+  { tipo: 'notas', nombre: 'Notas · Lista', cfg: { tam: 'm', fecha: true, nueva: false } },
+  { tipo: 'notas', nombre: 'Notas · Con añadir', cfg: { tam: 'm', fecha: false, nueva: true } },
 ];
 const NOM_DIA = ['Hoy', 'Mañana', 'Pasado mañana'];
 // Todo el bloque del tiempo (flechas de día, gráfico, resumen, detalles y próximos días). `dia` = día elegido (0 = hoy), `t0` = cuándo llegó
@@ -184,4 +186,14 @@ function htmlAgenda(r, o = {}, ahora = new Date()) {
     h += `<div class="wdia">${nom(k)}</div>` + (l.length ? l.map(e => `<div class="wev"${cdata(e)}><span class="h">${e.todoDia ? 'Todo el día' : hhmm2(new Date(e.i)) + (e.fin ? '–' + hhmm2(new Date(e.f)) : '')}</span><span class="tt">${esc(e.titulo)}${o.lugar !== false && e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span></div>`).join('') : '<div class="vacio">Sin eventos</div>');
   }
   return nav + (h || '<div class="vacio">Sin eventos</div>');
+}
+
+// Notas rápidas (widget y galería). `lista` = [{ id, texto, creada }] (null = aún sin cargar). fecha = false oculta la fecha; nueva = false quita el cuadro de «nueva nota»
+// (tampoco sale en la galería: `uid`). Los saltos de línea se conservan por CSS (.wn-t); el alto de la lista lo limita CSS según el tamaño (o.tam).
+const fechaNotaW = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).replace('.', ''); };
+function htmlNotas(lista, o = {}) {
+  const nueva = o.nueva !== false && !o.uid ? '<textarea id="wn-texto" class="campo" rows="2" maxlength="5000" aria-label="Nueva nota" placeholder="Nueva nota… (Intro para guardar)"></textarea>' : '';
+  const cuerpo = !lista ? '<div class="vacio">Cargando…</div>' : !lista.length ? '<div class="vacio">Sin notas todavía</div>'
+    : lista.map(n => `<article class="wn-nota"><div class="wn-t">${esc(n.texto)}</div>${o.fecha !== false && fechaNotaW(n.creada) ? `<time>${esc(fechaNotaW(n.creada))}</time>` : ''}</article>`).join('');
+  return nueva + `<div class="wn-lista wn-${['p', 'm', 'g'].includes(o.tam) ? o.tam : 'm'}">${cuerpo}</div>`;
 }

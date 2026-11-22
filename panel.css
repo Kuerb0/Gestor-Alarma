@@ -303,3 +303,8 @@ select.campo option { background: #2b2f38; color: #fff; }
 .uso-g-apps { padding: 0 0 6px 14px; font-size: 11px; color: var(--sec); } .uso-g-apps > div { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; } .uso-g-apps span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uso-plega > summary { cursor: pointer; list-style: none; } .uso-plega > summary::-webkit-details-marker { display: none; } .uso-plega > summary h2 { margin: 4px 0; } .uso-plega > summary h2::after { content: '▸'; margin-left: auto; } .uso-plega[open] > summary h2::after { content: '▾'; }
 .uso-plega[open] > summary { margin-bottom: 4px; }
+/* widget de Notas: lista con scroll (alto según el tamaño) */
+.wn-lista { overflow-y: auto; overscroll-behavior: contain; } .wn-p { max-height: 220px; } .wn-m { max-height: 320px; } .wn-g { max-height: 460px; }
+#w-c > .campo + .wn-lista { margin-top: 8px; } #wn-texto { width: 100%; resize: none; display: block; font-size: 12.5px; }
+.wn-nota { padding: 7px 10px; margin-bottom: 5px; border-radius: 16px; background: var(--vidrio); box-shadow: 0 6px 18px var(--sombra); }
+.wn-t { white-space: pre-wrap; word-break: break-word; font-size: 12.5px; line-height: 1.4; } .wn-nota time { display: block; margin-top: 3px; color: var(--sec); font-size: 11px; }
