@@ -43,6 +43,15 @@ function silenciar(minutos) {
   tray && tray.setContextMenu(menu());
 }
 ipcMain.handle('silencio:hasta', () => silencioHasta);
+// ---- Ctrl+Alt+H: oculta o enseña las fichas de alarmas y eventos (el overlay). Solo en memoria: al reiniciar vuelven a verse.
+// Si con ellas ocultas empieza a sonar una alarma nueva, vuelven a salir solas (lo que ya sonaba al ocultarlas no cuenta).
+let fichasOcultas = false, sonabanAlOcultar = new Set();
+function verFichas() { const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) completa || fichasOcultas ? ov.hide() : ov.showInactive(); }
+function ocultarFichas(v = !fichasOcultas) {
+  fichasOcultas = v; sonabanAlOcultar = new Set(v ? Alarmas.sonando() : []);
+  verFichas(); tray && tray.setContextMenu(menu());
+}
+function vigilarFichas() { if (fichasOcultas && Alarmas.sonando().some(id => !sonabanAlOcultar.has(id))) ocultarFichas(false); }
 const estado = () => enviar('estado', { abierto, fijado: ajustes.fijado });
 
 // ---- lecturas (si falla, se conserva el último dato bueno y se marca `obsoleto`)
@@ -195,7 +204,7 @@ let completa = false, vigia = null;
 function aplicarCompleta() {
   if (completa && abierto && !ajustes.fijado) poner(false);
   if (raya && !raya.isDestroyed()) completa || abierto ? raya.hide() : raya.showInactive();
-  const ov = Alarmas.overlay(); if (ov && !ov.isDestroyed()) completa ? ov.hide() : ov.showInactive();
+  verFichas();
   widgets.forEach(w => !w.isDestroyed() && (completa ? w.hide() : w.showInactive()));
   pintarAct();
 }
@@ -331,6 +340,7 @@ const menu = () => Menu.buildFromTemplate([
   { label: 'Abrir Outlook al iniciar', type: 'checkbox', checked: ajustes.abrirOutlook !== false, click: i => { ajustes.abrirOutlook = i.checked; guardarAjustes(); } },
   { type: 'separator' },
   ...Alarmas.menuItems(),
+  { label: 'Ocultar alarmas y eventos (Ctrl+Alt+H)', type: 'checkbox', checked: fichasOcultas, click: i => ocultarFichas(i.checked) },
   { type: 'separator' },
   { label: silenciando() ? `No molestar · hasta las ${horaSilencio()}` : 'No molestar', submenu: [
     { label: '30 minutos', click: () => silenciar(30) },
@@ -344,7 +354,7 @@ const menu = () => Menu.buildFromTemplate([
 ]);
 function crearBandeja() {
   tray = new Tray(nativeImage.createFromPath(ICONO).resize({ width: 16, height: 16 }));
-  tray.setToolTip('Gestor-Alarma · Ctrl+Alt+P abrir/cerrar · Ctrl+Alt+A nueva alarma · Ctrl+Alt+D descartar');
+  tray.setToolTip('Gestor-Alarma · Ctrl+Alt+P abrir/cerrar · Ctrl+Alt+A nueva alarma · Ctrl+Alt+D descartar · Ctrl+Alt+H ocultar alarmas');
   tray.setContextMenu(menu());
   tray.on('click', () => abierto ? cerrar() : abrir());
 }
@@ -458,6 +468,8 @@ app.whenReady().then(async () => {
   if (!globalShortcut.register('CommandOrControl+Alt+A', atajoAlarmas)) log('no se pudo registrar Ctrl+Alt+A');
   if (!globalShortcut.register('CommandOrControl+Alt+D', Alarmas.descartar)) log('no se pudo registrar Ctrl+Alt+D');
   if (!globalShortcut.register('Alt+C', nuevoEvento)) log('no se pudo registrar Alt+C');
+  if (!globalShortcut.register('CommandOrControl+Alt+H', () => ocultarFichas())) log('no se pudo registrar Ctrl+Alt+H');
+  setInterval(vigilarFichas, 1000);
   screen.on('display-metrics-changed', colocar);
   setInterval(sondear, 80);
   if (HUMO) return humo().catch(e => { console.log('HUMO FALLA\nexcepción: ' + (e && e.stack || e)); app.exit(1); }); // si la prueba lanza, sale en vez de quedarse colgada
@@ -589,6 +601,9 @@ async function humo() {
   completa = true; pintarAct(); await esp(200);
   if (await js(win, `document.getElementById('nueva')?.hidden`) !== true) fallos.push('la pastilla sigue en pantalla completa');
   completa = false;
+  ocultarFichas(true); if (Alarmas.overlay().isVisible()) fallos.push('Ctrl+Alt+H no oculta las fichas');
+  vigilarFichas(); if (!fichasOcultas) fallos.push('las fichas vuelven a salir por una alarma que ya sonaba al ocultarlas');
+  sonabanAlOcultar.clear(); vigilarFichas(); if (fichasOcultas || !Alarmas.overlay().isVisible()) fallos.push('una alarma nueva sonando no vuelve a enseñar las fichas');
   const cuadros = await n(Alarmas.overlay(), '.cuadro'); if (cuadros < 1) fallos.push('cuadros de agenda en el overlay: ' + cuadros + ' (esperado al menos 1: el evento en curso)');
   const cu = await js(Alarmas.overlay(), `document.querySelector('.cuadro .hora').textContent`); if (!/^−\d\d:\d\d$/.test(cu)) fallos.push('cuenta atrás del cuadro: ' + cu);
   await captura('overlay-cuadros', Alarmas.overlay());

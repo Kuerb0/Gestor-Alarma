@@ -6,6 +6,7 @@ Gestor-Alarma: panel lateral para Windows (Electron), fijo al **borde derecho** 
 - Ratón al borde derecho de la pantalla (en cualquier altura).
 - `Ctrl+Alt+P`: abre fijado / cierra. `Esc`: cierra. 📌 de la cabecera: fija abierto (se recuerda).
 - `Ctrl+Alt+A`: abre fijado en la pestaña **Alarmas** con el campo rápido enfocado (si ya está en Alarmas, cierra). `Ctrl+Alt+D`: descarta lo que suena.
+- `Ctrl+Alt+H`: oculta o enseña las fichas de alarmas y eventos de arriba a la derecha (también en el menú de la bandeja). Siguen sonando; si empieza a sonar una alarma nueva, vuelven a salir solas. No se recuerda al reiniciar.
 - Bandeja: clic abre/cierra; menú con Abrir panel, Fijar abierto, Actualizar ahora, las entradas de alarmas (nueva, descartar, sincronizar, formato del tiempo), **No molestar** (30 min, 1 h o 2 h; silencia los pitidos del overlay, las tarjetas siguen; se quita solo o desde el menú; no sobrevive a reiniciar), Iniciar con Windows y Salir.
 - Inicio con Windows: acceso directo `Panel.lnk` en la carpeta Inicio (Windows omite la entrada de Run en este equipo; la antigua se borra al arrancar). `PANEL_SIN_INICIO=1` evita tocar el inicio.
 

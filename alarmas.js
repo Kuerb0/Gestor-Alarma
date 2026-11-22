@@ -37,6 +37,7 @@ function tic() {
   });
   if (cambio) guardar();
 }
+const sonando = () => { const ahora = Date.now(); return todas().filter(a => T.fase(a, ahora).fase === 'sonando').map(a => a.id); }; // ids de lo que está sonando ahora (para enseñar las fichas si estaban ocultas)
 function descartar() { // Ctrl+Alt+D: silencia y descarta lo que suena y lo que se perdió
   const ahora = Date.now();
   let n = 0;
@@ -218,4 +219,4 @@ function datosHumo() {
   guardar();
 }
 
-module.exports = { cuadroArriba, iniciar, descartar, sincronizar, menuItems, datosHumo, overlay: () => overlay };
+module.exports = { cuadroArriba, iniciar, descartar, sonando, sincronizar, menuItems, datosHumo, overlay: () => overlay };
