@@ -20,6 +20,7 @@
     <button role="tab" id="t-tiempo" data-tab="tiempo" aria-controls="p-tiempo" aria-selected="false"><i>🌤️</i><span>Tiempo</span></button>
     <button role="tab" id="t-notas" data-tab="notas" aria-controls="p-notas" aria-selected="false"><i>📝</i><span>Notas</span></button>
     <button role="tab" id="t-sistema" data-tab="sistema" aria-controls="p-sistema" aria-selected="false"><i>📊</i><span>Sistema</span></button>
+    <button role="tab" id="t-uso" data-tab="uso" aria-controls="p-uso" aria-selected="false"><i>📈</i><span>Uso</span></button>
     <button role="tab" id="t-widgets" data-tab="widgets" aria-controls="p-widgets" aria-selected="false"><i>🧩</i><span>Widgets</span></button>
   </nav>
   <div id="paneles">
@@ -82,6 +83,41 @@
     <section class="pestana" id="p-sistema" role="tabpanel" aria-labelledby="t-sistema" hidden>
       <h2><span>Sistema</span> <button class="btn-sec wd" data-w="sistema" aria-pressed="false" title="Poner estas barras como widget en el escritorio">🖥️ Widget</button></h2>
       <div id="sistema"></div></section>
+    <section class="pestana" id="p-uso" role="tabpanel" aria-labelledby="t-uso" hidden>
+      <h2><span>Uso</span></h2>
+      <div id="uso-graficos">
+        <div class="tarjeta uso-t uso-g-barra">
+          <div class="fr-nav"><button class="fr-b" id="ug-ant" type="button" aria-label="Día anterior">‹</button><span id="ug-fecha" aria-live="polite"></span><button class="fr-b" id="ug-sig" type="button" aria-label="Día siguiente">›</button></div>
+          <div class="uso-g-ctl"><label>Reparto <select class="campo" id="ug-per" aria-label="Periodo del reparto"><option value="1">Día</option><option value="7">Semana</option><option value="30">Mes</option></select></label>
+            <span class="uso-g-niv" id="ug-niv" role="group" aria-label="Niveles que cuentan"><label><input type="checkbox" value="a" checked>Activa</label><label><input type="checkbox" value="v">Visible</label><label><input type="checkbox" value="s">Segundo plano</label><label><input type="checkbox" value="b">Fondo</label></span></div>
+        </div>
+        <div class="tarjeta uso-t"><h2>Hoy</h2><div id="ug-total" class="uso-g-total"></div><div id="ug-linea"></div></div>
+        <div class="tarjeta uso-t"><h2>Día por horas</h2><div id="ug-dia"></div></div>
+        <div class="tarjeta uso-t"><h2>Semana por horas</h2><div id="ug-sem"></div></div>
+        <div class="tarjeta uso-t"><h2>Semana por días</h2><div id="ug-sem2"></div></div>
+        <div class="tarjeta uso-t"><h2>Reparto por categoría</h2><div id="ug-rep"></div></div>
+      </div>
+      <div class="tarjeta uso-t"><h2>Sin clasificar (7 días)</h2><div id="uso-sin"></div></div>
+      <details class="tarjeta uso-t uso-plega" id="uso-reglas-t"><summary><h2>Reglas</h2></summary><div id="uso-reglas"></div>
+        <form id="uso-rform" class="ev-fila" autocomplete="off">
+          <select class="campo" id="uso-rcampo" aria-label="Campo"><option value="exe">Programa</option><option value="titulo">Título</option></select>
+          <select class="campo" id="uso-rop" aria-label="Operación"><option value="es">es</option><option value="contiene">contiene</option></select>
+          <input class="campo" id="uso-rvalor" placeholder="valor" maxlength="200" aria-label="Valor">
+          <select class="campo" id="uso-rcat" aria-label="Categoría"></select>
+          <button class="btn-txt" type="submit">Añadir</button>
+        </form></details>
+      <details class="tarjeta uso-t uso-plega"><summary><h2>Categorías</h2></summary><div id="uso-cats" class="uso-chips"></div>
+        <form id="uso-cform" class="ev-fila" autocomplete="off">
+          <input class="campo" id="uso-cnombre" placeholder="Nueva categoría" maxlength="40" aria-label="Nombre de la categoría">
+          <input type="color" id="uso-ccolor" value="#4a9eff" aria-label="Color">
+          <button class="btn-txt" type="submit">Añadir</button>
+        </form></details>
+      <div class="tarjeta uso-t"><h2>Sugerencias de Claude</h2>
+        <div class="ev-fila"><button class="btn-sec" id="uso-pedir" type="button">Pedir sugerencias</button><span class="vacio" id="uso-aviso" role="status"></span></div>
+        <textarea class="campo" id="uso-resp" rows="3" placeholder="Pegar respuesta de Claude" aria-label="Pegar respuesta de Claude"></textarea>
+        <div class="ev-fila"><button class="btn-sec" id="uso-imp" type="button">Importar</button><span id="uso-res" role="status"></span></div>
+      </div>
+    </section>
     <section class="pestana" id="p-widgets" role="tabpanel" aria-labelledby="t-widgets" hidden>
       <h2><span>Widgets</span></h2>
       <p class="vacio">Pulsa uno para ponerlo en el escritorio (otra vez para quitarlo). Luego se ajusta con el botón de ajustes del propio widget.</p>
@@ -89,6 +125,7 @@
   </div>
 </main>
 <script src="graficos.js"></script>
+<script src="graficos_uso.js"></script>
 <script src="tiempo.js"></script>
 <script src="pestana_alarmas.js"></script>
 <script src="panel.js"></script>

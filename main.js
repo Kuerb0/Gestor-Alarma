@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences, Notification, clipboard } = require('electron');
 const fs = require('fs'), path = require('path'), { spawn, execFile } = require('child_process');
 const Act = require('./actualizar'); // versiones nuevas en GitHub Releases
 const Salida = require('./outlook_salida'), limpiar = c => c && Array.isArray(c.agenda) ? { ...c, agenda: Salida.sinCopiasAlarma(c.agenda) } : c; // sin las copias «Alarma» que el Gestor exportó
@@ -44,6 +44,12 @@ function silenciar(minutos) {
   tray && tray.setContextMenu(menu());
 }
 ipcMain.handle('silencio:hasta', () => silencioHasta);
+// ---- seguimiento de uso (uso.js): la pausa solo vive en memoria; al reiniciar vuelve a recoger
+let tPausaUso = null;
+function pausarUso(hasta) {
+  uso && uso.pausar(hasta); tray && tray.setContextMenu(menu());
+  clearTimeout(tPausaUso); if (hasta && Number.isFinite(hasta)) tPausaUso = setTimeout(() => tray && tray.setContextMenu(menu()), Math.max(0, hasta - Date.now()) + 1e3); // al caducar, el menú deja de decir «en pausa»
+}
 // ---- Ctrl+Alt+H: oculta o enseña las fichas de alarmas y eventos (el overlay). Solo en memoria: al reiniciar vuelven a verse.
 // Si con ellas ocultas empieza a sonar una alarma nueva, vuelven a salir solas (lo que ya sonaba al ocultarlas no cuenta).
 let fichasOcultas = false, sonabanAlOcultar = new Set();
@@ -201,7 +207,7 @@ function sondear() {
 }
 
 // ---- pantalla completa (juego, vídeo, presentación): ni la rayita ni las fichas, y el borde no abre el panel (los atajos sí)
-let completa = false, vigia = null;
+let completa = false, vigia = null, uso = null;
 function aplicarCompleta() {
   if (completa && abierto && !ajustes.fijado) poner(false);
   if (raya && !raya.isDestroyed()) completa || abierto ? raya.hide() : raya.showInactive();
@@ -211,12 +217,22 @@ function aplicarCompleta() {
 }
 function vigilarCompleta() {
   try {
-    vigia = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'pantalla_completa.ps1')], { windowsHide: true });
-    vigia.stdout.on('data', d => { const v = String(d).trim().split(/\s+/).pop() === '1'; if (v !== completa) { completa = v; log('pantalla completa ' + v); aplicarCompleta(); } });
+    vigia = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'pantalla_completa.ps1'), '-Excluir', String(process.pid), '-Propio', process.execPath], { windowsHide: true });
+    let resto = ''; // el vigía escribe por líneas: «0»/«1» (pantalla completa) y «U {json}» (uso de apps); un trozo puede partir una línea
+    vigia.stdout.setEncoding('utf8');
+    vigia.stdout.on('data', d => {
+      const ls = (resto + d).split('\n'); resto = ls.pop();
+      for (const l0 of ls) {
+        const l = l0.trim();
+        if (l.startsWith('U ')) { try { uso && uso.entrada(l.slice(2), Date.now()); } catch (e) { log('uso ' + e.message); } continue; }
+        if (l !== '0' && l !== '1') continue;
+        const v = l === '1'; if (v !== completa) { completa = v; log('pantalla completa ' + v); aplicarCompleta(); }
+      }
+    });
     vigia.on('exit', c => { log('vigía de pantalla completa salió ' + c); vigia = null; if (completa) { completa = false; aplicarCompleta(); } });
   } catch (e) { log('vigía ' + e.message); }
 }
-app.on('will-quit', () => { try { vigia && vigia.kill(); } catch {} });
+app.on('will-quit', () => { try { uso && uso.cerrar(); } catch {} try { vigia && vigia.kill(); } catch {} });
 
 // ---- widgets del escritorio: la gráfica del Tiempo o la de Sistema en su propia ventanita transparente, arrastrable y sin ser «siempre encima»
 // (se queda con las demás ventanas). Posición y «abierto» se guardan en ajustes.widgets y se restauran al arrancar.
@@ -245,7 +261,7 @@ function guardarWidget(tipo, abiertoW) {
   const w = widgets.get(tipo), b = w && !w.isDestroyed() ? w.getBounds() : ajustes.widgets && ajustes.widgets[tipo];
   ajustes.widgets = { ...ajustes.widgets, [tipo]: { ...(ajustes.widgets && ajustes.widgets[tipo]), x: b ? b.x : undefined, y: b ? b.y : undefined, abierto: abiertoW } }; guardarAjustes();
 }
-const cargarWidget = (w, tipo) => w.loadFile('widget.html', { query: { tipo, cfg: JSON.stringify(cfgWidget(tipo)), estilo: (ajustes.widgets && ajustes.widgets[tipo] && ajustes.widgets[tipo].estilo) || 'cristal', fijo: altoFijo(tipo) ? '1' : '' } });
+const cargarWidget = (w, tipo) => w.loadFile('widget.html', { query: { tipo, cfg: JSON.stringify(cfgWidget(tipo)), estilo: (ajustes.widgets && ajustes.widgets[tipo] && ajustes.widgets[tipo].estilo) || 'consumo', fijo: altoFijo(tipo) ? '1' : '' } });
 function ponerWidget(tipo, v, c) { // `c` (opcional): configuración que se aplica al abrirlo (galería); si ya está abierto se recarga con ella
   if (!WIDGETS[tipo]) return;
   const w0 = widgets.get(tipo);
@@ -268,7 +284,7 @@ function ponerWidget(tipo, v, c) { // `c` (opcional): configuración que se apli
 }
 const tipoWidget = wc => [...widgets].find(([, w]) => !w.isDestroyed() && w.webContents === wc)?.[0];
 ipcMain.on('widget:poner', (_, tipo, v, c) => ponerWidget(tipo, v === true, c));
-ipcMain.on('widget:estilo', (e, est) => { const t = tipoWidget(e.sender); if (!t || !['cristal', 'fino', 'flotante', 'solido'].includes(est)) return; ajustes.widgets = { ...ajustes.widgets, [t]: { ...(ajustes.widgets && ajustes.widgets[t]), estilo: est } }; guardarAjustes(); });
+ipcMain.on('widget:estilo', (e, est) => { const t = tipoWidget(e.sender); if (!t || !['consumo', 'cristal', 'fino', 'flotante', 'solido'].includes(est)) return; ajustes.widgets = { ...ajustes.widgets, [t]: { ...(ajustes.widgets && ajustes.widgets[t]), estilo: est } }; guardarAjustes(); });
 ipcMain.on('widget:cfg', (e, c) => {
   const t = tipoWidget(e.sender); if (!t || !c || typeof c !== 'object') return;
   const tamAntes = cfgWidget(t).tam;
@@ -348,6 +364,11 @@ const menu = () => Menu.buildFromTemplate([
     { label: '1 hora', click: () => silenciar(60) },
     { label: '2 horas', click: () => silenciar(120) },
     ...(silenciando() ? [{ type: 'separator' }, { label: 'Quitar', click: () => silenciar(0) }] : []),
+  ] },
+  { label: uso && uso.pausado() ? 'Seguimiento de uso · en pausa' : 'Seguimiento de uso', submenu: [
+    { label: 'Pausar 1 hora', click: () => pausarUso(Date.now() + 36e5) },
+    { label: 'Pausar hasta reanudar', click: () => pausarUso(Infinity) },
+    ...(uso && uso.pausado() ? [{ type: 'separator' }, { label: 'Reanudar', click: () => pausarUso(0) }] : []),
   ] },
   { label: 'Widgets en el escritorio', submenu: Object.entries(WIDGETS).map(([t, w]) => ({ label: w.nombre, type: 'checkbox', checked: widgets.has(t), click: i => ponerWidget(t, i.checked) })) },
   { label: 'Iniciar con Windows', type: 'checkbox', checked: !!ajustes.iniciarConWindows, click: i => { ajustes.iniciarConWindows = i.checked; guardarAjustes(); aplicarInicio(); } },
@@ -451,6 +472,28 @@ function guardarNotas(lista) {
 }
 ipcMain.handle('notas:leer', leerNotas);
 ipcMain.handle('notas:guardar', (_, lista) => guardarNotas(lista));
+// ---- categorías del uso (reglas en categorias_uso.json; se aplican al leer)
+const CatUso = require('./categorias_uso'), CATS_USO = () => path.join(app.getPath('userData'), 'categorias_uso.json');
+let catsUso = null;
+function leerCatsUso() { if (catsUso) return catsUso; try { catsUso = CatUso.sanear(JSON.parse(fs.readFileSync(CATS_USO(), 'utf8'))); } catch { catsUso = CatUso.porDefecto(); } return catsUso; }
+function guardarCatsUso(cfg) { catsUso = CatUso.sanear(cfg); try { fs.writeFileSync(CATS_USO() + '.tmp', JSON.stringify(catsUso)); fs.renameSync(CATS_USO() + '.tmp', CATS_USO()); } catch (e) { log('categorias_uso ' + e.message); } return catsUso; }
+const diaUso = ms => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const sinClasUso = dias => { if (!uso) return []; const h = Date.now(); try { return CatUso.sinClasificar(uso.leerDias(diaUso(h - dias * 864e5), diaUso(h)), leerCatsUso()); } catch (e) { log('uso ' + e.message); return []; } };
+ipcMain.handle('uso:categorias', leerCatsUso);
+ipcMain.handle('uso:guardarCategorias', (_, cfg) => guardarCatsUso(cfg));
+ipcMain.handle('uso:sinClasificar', () => sinClasUso(7));
+ipcMain.handle('uso:sugerencias', () => { const l = sinClasUso(30); clipboard.writeText(CatUso.textoSugerencias(l, leerCatsUso())); return { ok: true, n: l.length }; });
+ipcMain.handle('uso:datos', (_, desde, hasta) => { // tramos de [desde, hasta] (AAAA-MM-DD) ya clasificados, con lo que está abierto ahora; máx. 60 días
+  const vacio = { cats: [], tramos: [] };
+  try {
+    const re = /^\d{4}-\d{2}-\d{2}$/; if (!uso || !re.test(desde) || !re.test(hasta)) return vacio;
+    const cfg = leerCatsUso(), p = s => { const [y, m_, d] = s.split('-').map(Number); return new Date(y, m_ - 1, d).getTime(); };
+    const a = p(desde), b = Math.min(p(hasta) + 864e5, a + 60 * 864e5), hoy = diaUso(Date.now());
+    let l = uso.leerDias(desde, hasta); if (hasta >= hoy) l = l.concat(uso.abiertos());
+    return { cats: cfg.categorias, tramos: l.filter(t => t && t.f > a && t.i < b).map(t => ({ i: t.i, f: t.f, n: t.n, c: CatUso.clasificar(t, cfg), d: t.d })) };
+  } catch (e) { log('uso ' + e.message); return vacio; }
+});
+ipcMain.handle('uso:importar', (_, texto) => { const r = CatUso.importar(String(texto || '').slice(0, 2e5), leerCatsUso()); if (r.n) guardarCatsUso(r.cfg); return { n: r.n, errores: r.errores, cfg: leerCatsUso() }; });
 
 ipcMain.on('abrir-outlook', () => { try { spawn('cmd', ['/c', 'start', '', 'outlook'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref(); } catch (e) { log('outlook ' + e.message); } });
 ipcMain.on('fijar', (_, b) => fijar(b === true));
@@ -464,6 +507,15 @@ app.whenReady().then(async () => {
   try { ajustes = { ...ajustes, ...JSON.parse(fs.readFileSync(AJUSTES, 'utf8')) }; } catch {}
   crearVentana();
   Alarmas.iniciar({ app, log, HUMO, alAbrir: abrirAlarmas, alEtiquetas: agendaAlOverlay, ventanas: () => [win] });
+  uso = require('./uso').crear({ dir: path.join(app.getPath('userData'), 'uso') }); uso.limpiar(); setInterval(() => uso.limpiar(), 864e5);
+  if (HUMO) { // datos de uso inventados de ayer y hoy, para que los gráficos tengan algo que enseñar
+    const d0 = new Date(); d0.setHours(0, 0, 0, 0); const H = 36e5, M = 6e4, udir = path.join(app.getPath('userData'), 'uso'); fs.mkdirSync(udir, { recursive: true });
+    [[-1, [[9, 0, 120, 'a', 'code.exe', 'Visual Studio Code', 'panel.js'], [11, 30, 45, 'a', 'discord.exe', 'Discord', 'Discord'], [14, 0, 90, 'a', 'opera.exe', 'Opera', 'YouTube - música'], [16, 0, 60, 'a', 'winword.exe', 'Word', 'Apuntes']]],
+     [0, [[8, 30, 100, 'a', 'code.exe', 'Visual Studio Code', 'main.js'], [10, 15, 25, 'a', 'discord.exe', 'Discord', 'Discord'], [10, 40, 20, 'i', '', '', ''], [11, 0, 70, 'a', 'opera.exe', 'Opera', 'YouTube - vídeo'], [12, 15, 40, 'a', 'winword.exe', 'Word', 'Informe'], [13, 0, 35, 'a', 'foo.exe', 'Foo', 'Algo'], [8, 30, 280, 'v', 'opera.exe', 'Opera', 'YouTube - vídeo']]]].forEach(([dd, l]) => {
+      const b = d0.getTime() + dd * 864e5, nm = new Date(b); const fn = diaUso(nm.getTime()) + '.jsonl';
+      fs.writeFileSync(path.join(udir, fn), l.map(([h, m, dur, n, exe, d, t]) => JSON.stringify({ i: b + h * H + m * M, f: b + h * H + (m + dur) * M, n, exe, d, ...(t ? { t } : {}) })).join('\n') + '\n');
+    });
+  }
   crearBandeja(); aplicarInicio();
   if (!globalShortcut.register('CommandOrControl+Alt+P', alternar)) log('no se pudo registrar Ctrl+Alt+P');
   if (!globalShortcut.register('CommandOrControl+Alt+A', atajoAlarmas)) log('no se pudo registrar Ctrl+Alt+A');
@@ -526,7 +578,7 @@ async function humo() {
   const salida = path.join(require('os').tmpdir(), 'panel-humo'); fs.mkdirSync(salida, { recursive: true });
   const js = (w, c) => w.webContents.executeJavaScript(c), esp = ms => new Promise(r => setTimeout(r, ms));
   const captura = async (n, w) => { try { fs.writeFileSync(path.join(salida, n + '.png'), (await w.webContents.capturePage()).toPNG()); } catch (e) { fallos.push('captura ' + n + ': ' + e.message); } };
-  for (const tema of ['', '-claro']) for (const t of ['alarmas', 'correo', 'agenda', 'tiempo', 'notas', 'sistema', 'widgets']) {
+  for (const tema of ['', '-claro']) for (const t of ['alarmas', 'correo', 'agenda', 'tiempo', 'notas', 'sistema', 'uso', 'widgets']) {
     if (tema && t === 'alarmas') { nativeTheme.themeSource = 'light'; await esp(400); }
     if (!await js(win, `(b => b ? (b.click(), true) : false)(document.querySelector('button[data-tab="${t}"]'))`)) { fallos.push('falta el botón de la pestaña ' + t); continue; }
     if (t === 'alarmas' && !tema) { // el botón de sincronizar responde (en humo, sin leer nada real)
@@ -545,6 +597,18 @@ async function humo() {
       const vuelta = await js(win, `(() => { const f = document.querySelector('#al-etq-l .etq'); return f ? [f.querySelector('.e-al').checked, f.querySelector('.e-an').value, f.querySelector('.e-au').value].join() : 'sin filas'; })()`);
       if (vuelta !== 'true,3,1440') fallos.push('etiquetas: la lista no conserva lo elegido (' + vuelta + ')');
       await js(win, `window.alarmas.syncEtiquetas([])`); await esp(200); // deja las etiquetas como estaban: si no, ese evento dejaría de salir como cuadro en el overlay
+    }
+    if (t === 'uso' && !tema) { // los gráficos con datos de uso inventados (escritos en el userData temporal antes de abrir la ventana)
+      await esp(500);
+      const gr = await js(win, `(() => { const g = document.getElementById('uso-graficos'); return { svg: g.querySelectorAll('svg').length, activas: /activas/.test(g.textContent) }; })()`);
+      if (!(gr.svg > 0)) fallos.push('pestaña Uso: sin gráficos (svg ' + gr.svg + ')');
+      if (!gr.activas) fallos.push('pestaña Uso: falta el total «activas»');
+    }
+    if (t === 'uso' && !tema) { // la pestaña Uso: tarjeta de reglas con alguna regla y el botón de sugerencias
+      await esp(300);
+      const nr = await js(win, `document.querySelectorAll('#uso-reglas-t .uso-regla').length`);
+      if (!(nr > 0)) fallos.push('pestaña Uso: sin reglas (' + nr + ')');
+      if (!await js(win, `/Pedir sugerencias/.test(document.getElementById('uso-pedir')?.textContent || '')`)) fallos.push('pestaña Uso: falta «Pedir sugerencias»');
     }
     await esp(700); await captura('panel-' + t + tema, win); // 700: deja acabar la gota de la pestaña
   }

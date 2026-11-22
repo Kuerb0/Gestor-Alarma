@@ -51,8 +51,109 @@ function ir(n, foco = true) {
   try { localStorage.setItem('pestana', n); } catch {}
   if (n === 'alarmas' && foco) $('al-rapido').focus();
   if (n === 'widgets') queueMicrotask(pintaWidgets); else $('widgets-g').replaceChildren(); // fuera de la pestaña no queda nada (evita ids y gráficos duplicados)
+  if (n === 'uso') queueMicrotask(() => usoCargar(false));
   if (n === 'notas') queueMicrotask(notasCargar); // tras cargar el script: `notas` ya existe
 }
+// ---- pestaña Uso: reglas y categorías (el gráfico va en #uso-graficos)
+let usoCfg = null, usoSin = [], usoCatPend = null;
+const usoOcupado = () => { const a = document.activeElement; return !!(a && $('p-uso').contains(a) && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && a.type !== 'color'))); };
+const usoColor = n => ((usoCfg.categorias.find(c => c.nombre === n) || {}).color) || '#555a66';
+const usoOpts = sel => usoCfg.categorias.map(c => `<option value="${esc(c.nombre)}"${c.nombre === sel ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('');
+const usoMin = s => s < 60 ? '<1 min' : s < 3600 ? Math.round(s / 60) + ' min' : Math.floor(s / 3600) + ' h ' + p2(Math.round(s % 3600 / 60)) + ' min';
+function usoColores(raiz) { raiz.querySelectorAll('[data-color]').forEach(e => e.style.setProperty('--c', e.dataset.color)); }
+async function usoCargar(fuerza) {
+  if (!fuerza && usoOcupado()) return;
+  try { [usoCfg, usoSin] = await Promise.all([api.usoCategorias(), api.usoSinClasificar()]); } catch { return; }
+  if (!fuerza && usoOcupado()) return;
+  usoPinta(); usoGraficos();
+}
+function usoPinta() {
+  if (!usoCfg) return;
+  const cats = usoCfg.categorias.filter(c => c.nombre !== 'Sin clasificar');
+  $('uso-sin').innerHTML = usoSin.length ? usoSin.map((x, i) => `<div class="uso-fila"><span class="uso-n"><b>${esc(x.d || x.exe)}</b>${x.t ? `<small>${esc(x.t)}</small>` : ''}</span><span class="uso-m">${usoMin(x.seg)}</span><select class="campo uso-asig" data-i="${i}" aria-label="Categoría para ${esc(x.d || x.exe)}"><option value="">Elegir…</option>${cats.map(c => `<option value="${esc(c.nombre)}">${esc(c.nombre)}</option>`).join('')}</select></div>`).join('') : '<div class="vacio">Todo clasificado</div>';
+  $('uso-reglas').innerHTML = usoCfg.reglas.length ? usoCfg.reglas.map((r, i) => `<div class="uso-regla" data-i="${i}"><span class="punto" data-color="${esc(usoColor(r.cat))}"></span><span class="uso-n">${r.campo === 'exe' ? 'Programa' : 'Título'} ${r.op} <b>${esc(r.valor)}</b> → ${esc(r.cat)}</span><button class="btn-sec uso-ar" type="button" data-a="sube" aria-label="Subir regla"${i ? '' : ' disabled'}>↑</button><button class="btn-sec uso-ar" type="button" data-a="baja" aria-label="Bajar regla"${i < usoCfg.reglas.length - 1 ? '' : ' disabled'}>↓</button><button class="btn-sec uso-ar" type="button" data-a="quita" aria-label="Quitar regla">✕</button></div>`).join('') : '<div class="vacio">Sin reglas</div>';
+  const sel = $('uso-rcat').value; $('uso-rcat').innerHTML = usoOpts(sel);
+  $('uso-cats').innerHTML = usoCfg.categorias.map(c => {
+    if (c.nombre === usoCatPend) { const n = usoCfg.reglas.filter(r => r.cat === c.nombre).length; return `<span class="uso-chip pend" data-n="${esc(c.nombre)}">¿Quitar «${esc(c.nombre)}» y sus ${n} reglas? <button class="btn-sec" type="button" data-a="si">Quitar</button><button class="btn-sec" type="button" data-a="no">Cancelar</button></span>`; }
+    return `<span class="uso-chip" data-n="${esc(c.nombre)}"><span class="punto" data-color="${esc(c.color)}"></span>${esc(c.nombre)}${c.nombre === 'Sin clasificar' ? '' : `<button class="uso-x" type="button" data-a="quita" aria-label="Quitar categoría ${esc(c.nombre)}">✕</button>`}</span>`;
+  }).join('');
+  usoColores($('p-uso'));
+}
+async function usoGuardar(cfg) { try { usoCfg = await api.usoGuardarCategorias(cfg); } catch {} usoCatPend = null; await usoCargar(true); }
+$('uso-sin').addEventListener('change', e => {
+  const s = e.target.closest('.uso-asig'); if (!s || !s.value) return;
+  const x = usoSin[+s.dataset.i]; if (!x) return;
+  const t = !!x.t, r = { campo: t ? 'titulo' : 'exe', op: t ? 'contiene' : 'es', valor: t ? x.t : x.exe, cat: s.value };
+  usoGuardar({ ...usoCfg, reglas: t ? [r, ...usoCfg.reglas] : [...usoCfg.reglas, r] });
+});
+$('uso-reglas').addEventListener('click', e => {
+  const b = e.target.closest('button[data-a]'), f = b && b.closest('.uso-regla'); if (!f) return;
+  const i = +f.dataset.i, l = [...usoCfg.reglas], a = b.dataset.a;
+  if (a === 'quita') l.splice(i, 1); else { const j = a === 'sube' ? i - 1 : i + 1; if (j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; }
+  usoGuardar({ ...usoCfg, reglas: l });
+});
+$('uso-rform').addEventListener('submit', e => {
+  e.preventDefault(); const v = $('uso-rvalor').value.trim(); if (!v) { $('uso-rvalor').focus(); return; }
+  const r = { campo: $('uso-rcampo').value, op: $('uso-rop').value, valor: v, cat: $('uso-rcat').value };
+  $('uso-rvalor').value = '';
+  usoGuardar({ ...usoCfg, reglas: r.campo === 'titulo' ? [r, ...usoCfg.reglas] : [...usoCfg.reglas, r] });
+});
+$('uso-cform').addEventListener('submit', e => {
+  e.preventDefault(); const n = $('uso-cnombre').value.trim(); if (!n) { $('uso-cnombre').focus(); return; }
+  if (usoCfg.categorias.some(c => norm(c.nombre) === norm(n))) { $('uso-cnombre').select(); return; }
+  $('uso-cnombre').value = '';
+  usoGuardar({ ...usoCfg, categorias: [...usoCfg.categorias, { nombre: n, color: $('uso-ccolor').value }] });
+});
+$('uso-cats').addEventListener('click', e => {
+  const b = e.target.closest('button[data-a]'), c = b && b.closest('.uso-chip'); if (!c) return;
+  const n = c.dataset.n, a = b.dataset.a;
+  if (a === 'no') { usoCatPend = null; usoPinta(); return; }
+  if (a === 'quita' && usoCfg.reglas.some(r => r.cat === n)) { usoCatPend = n; usoPinta(); return; }
+  usoGuardar({ categorias: usoCfg.categorias.filter(x => x.nombre !== n), reglas: usoCfg.reglas.filter(r => r.cat !== n) });
+});
+$('uso-pedir').onclick = async () => {
+  let r; try { r = await api.usoSugerencias(); } catch {}
+  $('uso-aviso').textContent = r && r.ok ? 'Copiado: pégalo en Claude Code' + (r.n ? ' (' + r.n + ' sin clasificar)' : '') : 'No se pudo copiar';
+};
+$('uso-imp').onclick = async () => {
+  const t = $('uso-resp').value.trim(); if (!t) { $('uso-resp').focus(); return; }
+  let r; try { r = await api.usoImportar(t); } catch {}
+  if (!r) { $('uso-res').textContent = 'No se pudo importar'; return; }
+  $('uso-res').textContent = r.n + (r.n === 1 ? ' regla añadida' : ' reglas añadidas') + (r.errores.length ? ' · Descartadas: ' + r.errores.slice(0, 5).join('; ') : '');
+  if (r.n) { $('uso-resp').value = ''; usoCfg = r.cfg; usoCargar(true); }
+};
+// ---- gráficos de la pestaña Uso: día elegido (la semana son los 7 días que acaban en él), periodo del reparto y niveles que cuentan
+const ugFmt = ms => { const d = new Date(ms); return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); };
+const ugMas = (s, n) => { const [y, m, d] = s.split('-').map(Number); return ugFmt(new Date(y, m - 1, d + n).getTime()); };
+let ugDia = ugFmt(Date.now()), ugSeq = 0;
+const ugNiveles = () => [...document.querySelectorAll('#ug-niv input:checked')].map(i => i.value);
+const ugSolape = (tr, a, b) => tr.filter(t => t.f > a && t.i < b).map(t => ({ ...t, i: Math.max(t.i, a), f: Math.min(t.f, b) }));
+async function usoGraficos() {
+  if (typeof GraficosUso === 'undefined' || !usoCfg) return;
+  const hoy = ugFmt(Date.now()); if (ugDia > hoy) ugDia = hoy;
+  const per = +$('ug-per').value, n = per === 30 ? 30 : 7, desde = ugMas(ugDia, -(n - 1)), sem = Array.from({ length: 7 }, (_, i) => ugMas(ugDia, i - 6)), seq = ++ugSeq;
+  let r; try { r = await api.usoDatos(desde, ugDia); } catch { return; }
+  if (seq !== ugSeq || !r) return;
+  const G = GraficosUso, niv = ugNiveles(), cats = r.cats && r.cats.length ? r.cats : usoCfg.categorias, tr = r.tramos || [];
+  const da = G.inicioDia(ugDia), ini = G.inicioDia(ugMas(ugDia, 1 - per)), fin = G.inicioDia(ugMas(ugDia, 1));
+  const rep = G.reparto(ugSolape(tr, ini, fin), niv), dia = G.reparto(ugSolape(tr, da, fin), niv);
+  const solo = niv.length === 1 && niv[0] === 'a', f = new Date(da), esHoy = ugDia === hoy;
+  $('ug-fecha').textContent = esHoy ? 'Hoy' : f.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+  $('ug-sig').disabled = esHoy;
+  $('ug-total').textContent = (esHoy ? 'Hoy' : f.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })) + ': ' + G.fmtMin(G.total(dia)) + (solo ? ' activas' : ' de uso');
+  $('ug-linea').innerHTML = G.lineaHtml(tr, ugDia, cats);
+  $('ug-dia').innerHTML = G.areaDia(tr, ugDia, niv, cats);
+  $('ug-sem').innerHTML = G.areaSemana(tr, sem, niv, cats);
+  $('ug-sem2').innerHTML = G.semanaHtml(tr, sem, niv, cats);
+  const abiertas = [...document.querySelectorAll('#ug-rep details[open] .uso-g-n')].map(x => x.textContent);
+  $('ug-rep').innerHTML = G.repartoHtml(rep, cats);
+  document.querySelectorAll('#ug-rep details').forEach(d => { if (abiertas.includes(d.querySelector('.uso-g-n').textContent)) d.open = true; });
+  $('uso-graficos').querySelectorAll('[data-c]').forEach(x => x.style.setProperty('--c', x.dataset.c));
+}
+$('ug-ant').onclick = () => { ugDia = ugMas(ugDia, -1); usoGraficos(); };
+$('ug-sig').onclick = () => { if (ugDia < ugFmt(Date.now())) { ugDia = ugMas(ugDia, 1); usoGraficos(); } };
+$('ug-per').onchange = usoGraficos; $('ug-niv').onchange = usoGraficos;
+setInterval(() => { if (!$('p-uso').hidden && ugDia === ugFmt(Date.now())) usoGraficos(); }, 60e3);
 TABS.forEach(t => t.onclick = () => ir(t.dataset.tab));
 $('tabs').addEventListener('keydown', e => {
   const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0, i = NOMBRES.indexOf(document.activeElement.dataset.tab);
