@@ -144,6 +144,7 @@ async function usoGraficos() {
   $('ug-linea').innerHTML = G.lineaHtml(tr, ugDia, cats);
   $('ug-dia').innerHTML = G.areaDia(tr, ugDia, niv, cats);
   $('ug-sem').innerHTML = G.areaSemana(tr, sem, niv, cats);
+  $('ug-acu').innerHTML = G.acumuladoSemana(tr, sem, niv, cats, Date.now());
   $('ug-sem2').innerHTML = G.semanaHtml(tr, sem, niv, cats);
   const abiertas = [...document.querySelectorAll('#ug-rep details[open] .uso-g-n')].map(x => x.textContent);
   $('ug-rep').innerHTML = G.repartoHtml(rep, cats);

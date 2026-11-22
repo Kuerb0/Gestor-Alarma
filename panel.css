@@ -293,7 +293,7 @@ select.campo option { background: #2b2f38; color: #fff; }
 .uso-g-niv { display: flex; flex-wrap: wrap; gap: 4px 12px; } .uso-g-niv input { accent-color: var(--acento); }
 .uso-g-total { font-size: 14px; font-weight: 600; margin: 2px 0 8px; }
 .uso-g-svg { display: block; width: 100%; height: auto; overflow: visible; }
-.uso-g-eje { stroke: var(--sec); stroke-width: 1; opacity: .5; } .uso-g-pista { fill: var(--vidrio-h); }
+.uso-g-eje { stroke: var(--sec); stroke-width: 1; opacity: .5; } .uso-g-rej { stroke: var(--sec); stroke-width: 1; opacity: .18; } .uso-g-pista { fill: var(--vidrio-h); }
 .uso-g-t { fill: var(--sec); font-size: 10px; text-anchor: middle; } .uso-g-t.uso-g-k { fill: var(--txt); font-weight: 600; } .uso-g-max { text-anchor: start; opacity: .8; }
 .uso-g-ley { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; font-size: 11px; color: var(--sec); }
 .uso-g-lg, .uso-g-n { display: inline-flex; align-items: center; gap: 5px; } .uso-g-lg .punto, .uso-g-n .punto { width: 9px; height: 9px; border-radius: 5px; background: var(--c, var(--sec)); flex: none; }

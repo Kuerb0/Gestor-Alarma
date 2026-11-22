@@ -84,6 +84,40 @@ const GraficosUso = (() => {
     const a = inicioDia(dias[0]), b = sigDia(inicioDia(dias[dias.length - 1])), r = porBloques(tramos, a, b, (b - a) / (24 * dias.length), niveles);
     return areaSvg(r, cats, dias.map((d, j) => ({ x: (j + .5) / dias.length, t: INICIAL[new Date(inicioDia(d)).getDay()] })), 'Uso por hora de la semana', false);
   }
+  function serieAcumulada(tramos, dias, niveles, ahoraMs = Date.now()) { // -> { a, fin, t1, cats (de abajo a arriba), cum: [[min acumulados por hora empezada]], tot: [min por cat], total, puntos: [{ t, v: [acumulado por cat] }] } | null
+    const H = 3600e3, a = inicioDia(dias[0]), fin = sigDia(inicioDia(dias[dias.length - 1]));
+    let t1 = ahoraMs >= a && ahoraMs < fin ? ahoraMs : fin; if (t1 - a < H) t1 = a + H;
+    const r = porBloques(tramos, a, fin, H, niveles), nh = Math.min(r.m.length ? r.m[0].length : 0, Math.ceil((t1 - a) / H - 1e-9));
+    const cs = r.cats.map((c, k) => { const cum = []; let s = 0; for (let i = 0; i < nh; i++) cum.push(s += r.m[k][i]); return { c, cum, pri: r.m[k].slice(0, nh).findIndex(v => v > 0) }; }).filter(x => x.pri >= 0).sort((x, y) => x.pri - y.pri);
+    const tot = cs.map(x => x.cum[nh - 1]), total = tot.reduce((s, v) => s + v, 0);
+    if (!cs.length || !(total > 0)) return null;
+    const cero = cs.map(() => 0), puntos = [{ t: a, v: cero }]; let subio = false;
+    for (let i = 0; i < nh; i++) {
+      const v = cs.map(x => x.cum[i]), ini = a + i * H;
+      if (!subio && v.some(x => x > 0)) { subio = true; puntos.push({ t: ini, v: cero }, { t: ini, v }); }
+      puntos.push({ t: Math.min(a + (i + 1) * H, t1), v });
+    }
+    return { a, fin, t1, cats: cs.map(x => x.c), cum: cs.map(x => x.cum), tot, total, puntos };
+  }
+  function acumuladoSemana(tramos, dias, niveles, cats, ahoraMs = Date.now()) { // áreas apiladas acumuladas hora a hora (como «Consumo por hora»)
+    const r = serieAcumulada(tramos, dias, niveles, ahoraMs); if (!r) return vacio;
+    const W = 420, H = 118, X0 = 30, X1 = 414, Y0 = 14, Y1 = 92, max = Math.max(r.total, 1), x = t => X0 + (t - r.a) / (r.t1 - r.a) * (X1 - X0), y = v => Y1 - v / max * (Y1 - Y0);
+    const pila = r.puntos.map(p => { let s = 0; return [0, ...p.v.map(v => s += v)]; }), f = n => n.toFixed(1);
+    let s = `<svg class="uso-g-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Uso acumulado de la semana" xmlns="http://www.w3.org/2000/svg">`;
+    s += `<line class="uso-g-eje" x1="${X0}" y1="${Y1}" x2="${X1}" y2="${Y1}"/>`;
+    for (let t = r.a + 6 * 3600e3; t < r.t1 - 1; t += 6 * 3600e3) { const px = f(x(t)), noche = new Date(t).getHours() === 0; s += `<line class="${noche ? 'uso-g-eje' : 'uso-g-rej'}" x1="${px}" y1="${Y0}" x2="${px}" y2="${Y1}"/>`; }
+    for (let k = r.cats.length - 1; k >= 0; k--) {
+      const arriba = r.puntos.map((p, j) => `${f(x(p.t))},${f(y(pila[j][k + 1]))}`), abajo = r.puntos.map((p, j) => `${f(x(p.t))},${f(y(pila[j][k]))}`).reverse();
+      s += `<polygon fill="${e(colorDe(cats, r.cats[k]))}" fill-opacity=".85" points="${arriba.concat(abajo).join(' ')}"><title>${e(r.cats[k])} · ${e(fmtMin(r.tot[k]))}</title></polygon>`;
+    }
+    dias.forEach((d, j) => {
+      const ds = inicioDia(d), de = sigDia(ds), p0 = x(Math.max(ds, r.a)), p1 = x(Math.min(de, r.t1));
+      if (p1 - p0 >= 16) s += `<text class="uso-g-t${j === dias.length - 1 ? ' uso-g-k' : ''}" x="${f((p0 + p1) / 2)}" y="${Y1 + 15}">${INICIAL[new Date(ds).getDay()]}</text>`;
+    });
+    s += `<text class="uso-g-t" text-anchor="end" x="${X0 - 4}" y="${Y1}">0</text><text class="uso-g-t" text-anchor="end" x="${X0 - 4}" y="${Y0 + 8}">${e(corto(max))}</text>`;
+    s += `<line class="uso-g-eje" x1="${X1}" y1="${Y0}" x2="${X1}" y2="${Y1}"/><text class="uso-g-t uso-g-k" text-anchor="end" x="${X1 - 3}" y="${f(Math.max(9, y(r.total) - 3))}">${e(corto(r.total))}</text>`;
+    return s + '</svg>' + leyenda(r.cats, cats);
+  }
   function lineaHtml(tramos, dia, cats) { // banda 0–24 h con las categorías; inactivo en gris tenue
     const a = inicioDia(dia), b = sigDia(a), seg = lineaDia(tramos, a), W = 420, X0 = 6, X1 = 414, px = ms => X0 + (ms - a) / (b - a) * (X1 - X0);
     if (!seg.length) return vacio;
@@ -113,6 +147,6 @@ const GraficosUso = (() => {
     });
     return s + '</svg>' + leyenda(r.cats, cats);
   }
-  return { porBloques, porDia, reparto, lineaDia, total, fmtMin, leyenda, areaDia, areaSemana, lineaHtml, repartoHtml, semanaHtml, inicioDia };
+  return { porBloques, porDia, reparto, lineaDia, total, fmtMin, leyenda, areaDia, areaSemana, serieAcumulada, acumuladoSemana, lineaHtml, repartoHtml, semanaHtml, inicioDia };
 })();
 if (typeof module !== 'undefined') module.exports = GraficosUso;

@@ -48,4 +48,36 @@ const cerca = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, a + ' != ' + b);
   assert.ok(/Sin datos/.test(G.areaDia([], '2026-11-18', ['a'], cats)) && /Sin datos/.test(G.repartoHtml([], cats)));
   assert.strictEqual(G.fmtMin(135), '2 h 15 min'); assert.strictEqual(G.fmtMin(35), '35 min'); assert.strictEqual(G.fmtMin(120), '2 h');
 }
+{ // acumuladoSemana: acumulado hora a hora, capas por primer uso, borde derecho en «ahora»
+  const dias = ['2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18'], d17 = dia0 - 864e5;
+  const l = [tr(d17 + 600 * MIN, d17 + 630 * MIN, 'Ocio'), tr(t0, t0 + 60 * MIN, 'Estudio')];
+  const pasado = dia0 + 2 * 864e5;
+  assert.ok(/Sin datos/.test(G.acumuladoSemana([], dias, ['a'], cats, pasado)));
+  assert.ok(/Sin datos/.test(G.acumuladoSemana([tr(t0, t0 + 60 * MIN, 'Estudio', 'v')], dias, ['a'], cats, pasado)));
+  const h = G.acumuladoSemana(l, dias, ['a'], cats, pasado);
+  assert.ok(/<svg/.test(h) && !/\sstyle\s*=/i.test(h) && !/\son\w+\s*=/i.test(h));
+  assert.strictEqual((h.match(/<polygon/g) || []).length, 2); assert.ok(/uso-g-lg/.test(h), 'leyenda');
+  assert.ok(/<title>Ocio · 30 min<\/title>/.test(h) && /<title>Estudio · 1 h<\/title>/.test(h));
+  assert.ok(h.indexOf('fill="#4a9eff"') < h.indexOf('fill="#ff8a3d"'), 'la capa de abajo (Ocio, primer uso) se dibuja la última');
+  assert.ok(/>1h30<\/text>/.test(h), 'etiqueta superior = total');
+  assert.strictEqual((h.match(/class="uso-g-t[^"]*" x="[\d.]+" y="107"/g) || []).length, 7, 'inicial de cada día');
+  const s = G.serieAcumulada(l, dias, ['a'], pasado);
+  assert.deepStrictEqual(s.cats, ['Ocio', 'Estudio']); cerca(s.total, 90); assert.strictEqual(s.t1, s.fin);
+  assert.strictEqual(s.fin - s.a, 7 * 864e5, 'eje de 7 días completos');
+  const ini = d17 + 600 * MIN, vs = s.puntos.filter(p => p.t < ini || (p.t === ini && p.v.every(v => v === 0)));
+  assert.ok(vs.length >= 2 && vs.every(p => p.v.every(v => v === 0)), 'plano a 0 hasta el primer uso');
+  const sube = s.puntos[vs.length]; assert.strictEqual(sube.t, ini); cerca(sube.v[0], 30); // subida vertical
+  // ahora a mitad del último día: el eje y las horas se cortan en ahora; lo posterior no cuenta
+  const ahora = dia0 + 12 * 60 * MIN, tarde = [...l, tr(dia0 + 13 * 60 * MIN, dia0 + 14 * 60 * MIN, 'Estudio')];
+  const m = G.serieAcumulada(tarde, dias, ['a'], ahora);
+  assert.strictEqual(m.t1, ahora); cerca(m.total, 90); assert.ok(m.puntos.every(p => p.t <= ahora));
+  const hm = G.acumuladoSemana(tarde, dias, ['a'], cats, ahora);
+  assert.ok(/>1h30<\/text>/.test(hm));
+  const xs = [...hm.matchAll(/points="([^"]+)"/g)].flatMap(q => q[1].split(' ').map(p => +p.split(',')[0]));
+  assert.ok(xs.length && Math.max(...xs) <= 414 + 1e-6 && Math.min(...xs) >= 30 - 1e-6, 'x dentro del marco');
+  cerca(Math.max(...xs), 414);
+  // menos de 1 h de eje: se amplía a 1 h
+  assert.strictEqual(G.serieAcumulada(tarde, dias, ['a'], dia0 + 5 * 60 * MIN).t1, dia0 + 5 * 60 * MIN);
+  assert.strictEqual(G.serieAcumulada([tr(dia0, dia0 + 10 * MIN, 'Estudio')], ['2026-11-18'], ['a'], dia0 + 10 * MIN).t1, dia0 + 60 * MIN);
+}
 console.log('test_graficos_uso OK');
