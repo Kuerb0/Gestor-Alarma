@@ -23,6 +23,16 @@ body { padding: 10px; height: auto; overflow: hidden; }
 /* flotante: sin marco ni fondo, las tarjetas flotan sueltas sobre el escritorio */
 #w[data-estilo=flotante] { background: none; box-shadow: none; --vidrio: rgba(18,22,32,.22); --brillo: rgba(255,255,255,.08); }
 @media (prefers-color-scheme: light) { #w[data-estilo=flotante] { --vidrio: rgba(255,255,255,.3); } }
+/* consumo (por defecto): como los widgets de Consumo-App (vidrio.fondo_widget con transparente=True). Sin fondo, tinte, brillo ni sombra: se ve el escritorio
+   en vivo; solo el marco de 1 px (blanco .55) y el borde degradado de 155° de cada tarjeta (b1 .30·.55 en las esquinas, b2 .10·.55 en medio). Gráfico en contorno. */
+#w[data-estilo=consumo] { border-radius: 26px; background: none; --wborde: rgba(255,255,255,.55); --wfondo: transparent; --vidrio: transparent; --brillo: transparent; --sombra: transparent; --b1: rgba(255,255,255,.165); --b2: rgba(255,255,255,.055); box-shadow: inset 0 0 0 1px var(--wborde); }
+@media (prefers-color-scheme: light) { #w[data-estilo=consumo] { --wborde: rgba(70,80,105,.6); --b1: rgba(70,80,105,.54); --b2: rgba(70,80,105,.24); } }
+#w[data-estilo=consumo] #w-c *::after { display: none; } /* sin reflejo especular en las tarjetas */
+#w[data-estilo=consumo] #w-c * { box-shadow: none; }
+#w[data-estilo=consumo] .fr-a { opacity: .35; } /* área del gráfico casi transparente: manda la línea */
+#w[data-estilo=consumo] .evento[data-c] { background: color-mix(in srgb, var(--c) 10%, transparent); }
+#w[data-estilo=consumo] .evento[data-c]::before { background: color-mix(in srgb, var(--c) 70%, transparent); }
+#w[data-estilo=consumo] .barra progress, #w[data-estilo=consumo] .barra progress::-webkit-progress-bar { background: rgba(128,128,128,.12); box-shadow: none; }
 /* sólido: el de antes */
 #w[data-estilo=solido] { --wfondo: rgba(20,24,34,.8); --vidrio: rgba(255,255,255,.07); --sombra: rgba(0,0,0,.4); --ts: rgba(0,0,0,0); }
 @media (prefers-color-scheme: light) { #w[data-estilo=solido] { --wfondo: rgba(250,252,255,.82); --vidrio: rgba(255,255,255,.55); } }

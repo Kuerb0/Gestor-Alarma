@@ -60,8 +60,9 @@ if (new URLSearchParams(location.search).get('fijo')) $('w').classList.add('fijo
 }
 let alto = 0;
 new ResizeObserver(() => { if ($('w').classList.contains('fijo')) return; const h = Math.ceil($('w').getBoundingClientRect().height) + 20; if (h !== alto) { alto = h; api.widgetAlto(h); } }).observe($('w'));
-const ESTILOS = ['cristal', 'fino', 'flotante', 'solido'];
-let estilo = new URLSearchParams(location.search).get('estilo'); if (!ESTILOS.includes(estilo)) estilo = 'cristal';
+const ESTILOS = ['consumo', 'cristal', 'fino', 'flotante', 'solido'];
+let estilo = new URLSearchParams(location.search).get('estilo'); if (!ESTILOS.includes(estilo)) estilo = 'consumo';
+try { if (!localStorage.getItem('estilo-consumo-' + tipo)) { localStorage.setItem('estilo-consumo-' + tipo, '1'); if (estilo !== 'consumo') { estilo = 'consumo'; api.widgetEstilo(estilo); } } } catch {} // una vez: todos los widgets pasan al estilo de Consumo
 const aplicaEstilo = () => { $('w').dataset.estilo = estilo; $('w-e').title = 'Estilo: ' + estilo + ' (clic para cambiar)'; };
 aplicaEstilo();
 $('w-e').onclick = () => { estilo = ESTILOS[(ESTILOS.indexOf(estilo) + 1) % ESTILOS.length]; aplicaEstilo(); api.widgetEstilo(estilo); };
