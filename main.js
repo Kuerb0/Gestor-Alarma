@@ -772,7 +772,7 @@ async function humo() {
   // editar: lápiz del primer evento con hora -> formulario precargado, cambiar título y 15 min, guardar
   await js(win, `[...document.querySelectorAll('#agenda .evento')].find(e => e.querySelector('.h').textContent !== 'Todo el día').querySelector('.editar-ev').click()`); await esp(200);
   if (await js(win, `document.getElementById('ev-crear').textContent`) !== 'Guardar cambios') fallos.push('editar evento: el formulario no pasa a modo edición');
-  await js(win, `(() => { \document.querySelector('.ev-\dur[\data-m="15"]').click(); const t = \document.getElementByI\d('ev-texto'); t.value = 'E\dita\do humo ' + t.value.match(/\\d{1,2}:\\d{2}$/)[0]; t.\dispatchEvent(new Event('input')); })()`);
+  await js(win, `(() => { \document.querySelector('.ev-\dur[\data-m="15"]').click(); const t = \document.getElementByI\d('ev-texto'); t.value = 'E\dita\do humo ' + t.value.match(/\\d{1,2}:\\d{2}/)[0]; t.\dispatchEvent(new Event('input')); })()`);
   await js(win, `document.getElementById('ev-crear').click()`); await esp(400);
   if (!await js(win, `[...document.querySelectorAll('#agenda .evento .tt')].some(t => t.textContent.startsWith('Editado humo'))`)) fallos.push('editar evento: el cambio no sale en la agenda');
   await js(win, `document.querySelector('#agenda .borrar-ev').click()`); await esp(200);

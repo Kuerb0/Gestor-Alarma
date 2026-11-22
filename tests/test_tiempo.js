@@ -86,4 +86,11 @@ assert.strictEqual(T.color(0), 'rgb(255,70,55)');                             //
 assert.strictEqual(T.color(3e5), 'rgb(255,130,48)');                          // a 5 min: mitad ámbar→rojo (uniforme)
 assert.strictEqual(T.color(36e5 - 15e5), 'rgb(165,177,148)');                 // mitad azul→ámbar
 
+// ---- duración dentro del texto de un evento
+const ed = T.extraerDuracion;
+assert.deepStrictEqual(ed('Reunión 10:00 45min'), { min: 45, resto: 'Reunión 10:00' }); assert.deepStrictEqual(ed('Médico 9:30 45m'), { min: 45, resto: 'Médico 9:30' });
+assert.strictEqual(ed('Taller viernes 17:00 1h30m').min, 90); assert.strictEqual(ed('Taller 1h 30min').min, 90); assert.strictEqual(ed('Clase 12:00 2h').min, 120); assert.strictEqual(ed('Clase 1,5h').min, 90);
+assert.deepStrictEqual(ed('Examen 10:45'), { min: null, resto: 'Examen 10:45' }); assert.deepStrictEqual(ed('Cita 20/11 9:30'), { min: null, resto: 'Cita 20/11 9:30' });
+assert.strictEqual(ed('Sala3m').min, null); assert.strictEqual(ed('Reunión 0min').min, null); assert.strictEqual(ed('Clase 2h 10:00 30min').min, 30);
+
 console.log('TEST OK');

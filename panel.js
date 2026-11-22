@@ -350,7 +350,8 @@ const evIso = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())
 const evFecha = d => d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'numeric' }).replace('.', '').replace(/, /, ' ');
 // Texto -> { ev, ini, fin } o { error }. Sin fecha en el texto usa el día elegido (evDia); sin hora = todo el día.
 function evLeer() {
-  const t = $('ev-texto').value.trim(); if (!t) return { error: '' };
+  const t0 = $('ev-texto').value.trim(); if (!t0) return { error: '' };
+  const d = Tiempo.extraerDuracion(t0), t = d.resto; if (!t) return { error: '' };
   const hayHora = /(?<![\d:])\d{1,2}:\d{2}(?![\d:])/.test(t), hayFecha = /\d{1,2}\/\d{1,2}|(?<![\p{L}])(hoy|ma[ñn]ana|pasado|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)(?![\p{L}])/iu.test(t);
   let ini, titulo;
   if (evDia && !hayFecha) {
@@ -364,13 +365,16 @@ function evLeer() {
     if (r.rec.tipo !== 'fecha') return { error: 'Falta la fecha: «mañana 10:00», «viernes 20:00», «20/11 09:30»' };
     ini = new Date(r.rec.objetivo); titulo = r.rec.nombre;
   }
-  const todoDia = evDur === 0 || !hayHora;
+  if (d.min && !hayHora) return { error: 'Falta la hora de inicio (10:00)' };
+  const todoDia = !d.min && (evDur === 0 || !hayHora);
   if (todoDia) ini = dia0(ini);
-  const fin = todoDia ? new Date(ini.getFullYear(), ini.getMonth(), ini.getDate() + 1) : new Date(ini.getTime() + (evDur || 60) * 6e4);
-  return { ev: { titulo, inicio: evIso(ini), fin: evIso(fin), todoDia, lugar: $('ev-lugar-i').value, categoria: evCat }, ini, fin };
+  const fin = todoDia ? new Date(ini.getFullYear(), ini.getMonth(), ini.getDate() + 1) : new Date(ini.getTime() + (d.min || evDur || 60) * 6e4);
+  return { ev: { titulo, inicio: evIso(ini), fin: evIso(fin), todoDia, lugar: $('ev-lugar-i').value, categoria: evCat }, ini, fin, min: d.min };
 }
 function evVista() {
   const v = $('ev-vista'), r = evLeer(); v.className = ''; v.textContent = '';
+  const conDur = Tiempo.extraerDuracion($('ev-texto').value).min != null; // con duración en el texto, ningún botón queda marcado
+  document.querySelectorAll('.ev-dur').forEach(b => b.setAttribute('aria-pressed', !conDur && +b.dataset.m === evDur));
   if (r.error != null) { if (r.error) { v.className = 'mal'; v.textContent = r.error; } else if (evDia) v.textContent = 'Día: ' + evFecha(evDia); return r; }
   v.append(Object.assign(document.createElement('b'), { textContent: r.ev.titulo }), ' · ' + evFecha(r.ini) + (r.ev.todoDia ? ' · todo el día' : ' ' + hhmm(r.ini) + '–' + hhmm(r.fin)));
   return r;
@@ -394,7 +398,7 @@ function evEditar(e) { // abre el formulario con el evento: título + hora en el
   const ini = new Date(e.inicio), fin = new Date(e.fin || e.inicio), min = Math.round((fin - ini) / 6e4);
   evCerrar(); evForm.hidden = false; $('ev-abrir').setAttribute('aria-expanded', 'true');
   evDia = dia0(ini); evDur = e.todoDia ? 0 : (min > 0 ? min : 60); evCat = e.categoria || '';
-  $('ev-texto').value = e.titulo + (e.todoDia ? '' : ' ' + hhmm(ini));
+  $('ev-texto').value = e.titulo + (e.todoDia ? '' : ' ' + hhmm(ini) + ([15, 30, 60, 120].includes(min) || min <= 0 ? '' : min < 60 ? ` ${min}min` : min % 60 ? ` ${Math.floor(min / 60)}h${min % 60}m` : ` ${min / 60}h`));
   $('ev-lugar-i').value = e.lugar || ''; if (e.lugar) { $('ev-lugar').hidden = false; $('ev-mas').hidden = true; }
   document.querySelectorAll('.ev-dur').forEach(b => b.setAttribute('aria-pressed', +b.dataset.m === evDur));
   evPintaChips(); evEdit = { id: e.id, inicioOriginal: e.inicio, recurrente: !!e.recurrente, cat: evCat }; $('ev-crear').textContent = evEtq();
@@ -418,6 +422,7 @@ $('ev-texto').addEventListener('input', evVista); $('ev-lugar-i').addEventListen
 $('ev-mas').onclick = () => { $('ev-lugar').hidden = false; $('ev-mas').hidden = true; $('ev-lugar-i').focus(); };
 $('ev-dur').onclick = e => {
   const b = e.target.closest('.ev-dur'); if (!b) return;
+  const d = Tiempo.extraerDuracion($('ev-texto').value); if (d.min != null) $('ev-texto').value = d.resto; // el botón sustituye a la duración escrita
   evDur = +b.dataset.m; document.querySelectorAll('.ev-dur').forEach(x => x.setAttribute('aria-pressed', x === b)); evVista();
 };
 evForm.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); evCerrar(); $('ev-abrir').focus(); } });

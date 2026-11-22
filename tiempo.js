@@ -183,6 +183,16 @@
     return { ok: true, rec: { nombre: nombre || (r.tipo === 'cuenta' ? 'Cuenta atrás' : 'Alarma'), tipo: r.tipo, objetivo: Math.round(r.objetivo) } };
   }
 
-  const API = { parsear, formatear, color, fase, ordenar, validar, siguiente, etiquetaDias, SUENA_MS, VISIBLE_MS };
+  // Duración escrita en un texto de evento ("45min", "1h30m", "1,5h", "2 horas"): solo horas y minutos. Devuelve { min, resto }; min = null si no hay.
+  // No casa horas del reloj (10:45), cifras pegadas a palabras (Sala3m) ni fechas. Si hay varios bloques, vale el último.
+  function extraerDuracion(texto) {
+    const t = String(texto ?? ''), u = '(\\d+(?:[.,]\\d+)?)\\s*(h(?:oras?|rs?)?|m(?:in(?:utos?)?)?)(?![\\p{L}:])\\s*';
+    const xs = [...t.matchAll(new RegExp(`(?<![\\p{L}\\d.,:/])(?:${u})+`, 'giu'))]; if (!xs.length) return { min: null, resto: t };
+    const x = xs[xs.length - 1]; let min = 0;
+    for (const y of x[0].matchAll(new RegExp(u, 'giu'))) min += parseFloat(y[1].replace(',', '.')) * (y[2][0].toLowerCase() === 'h' ? 60 : 1);
+    min = Math.round(min); if (!(min > 0)) return { min: null, resto: t };
+    return { min, resto: limpiar(quitar(t, x)) };
+  }
+  const API = { parsear, extraerDuracion, formatear, color, fase, ordenar, validar, siguiente, etiquetaDias, SUENA_MS, VISIBLE_MS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else raiz.Tiempo = API;
 })(typeof window !== 'undefined' ? window : globalThis);
