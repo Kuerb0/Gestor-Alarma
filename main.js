@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences, Notification } = require('electron');
 const fs = require('fs'), path = require('path'), { spawn, execFile } = require('child_process');
 const Act = require('./actualizar'); // versiones nuevas en GitHub Releases
+const Salida = require('./outlook_salida'), limpiar = c => c && Array.isArray(c.agenda) ? { ...c, agenda: Salida.sinCopiasAlarma(c.agenda) } : c; // sin las copias «Alarma» que el Gestor exportó
 const Alarmas = require('./alarmas'); // motor del antiguo Gestor-Alarmas (overlay, datos, Post-It/Outlook)
 
 const HUMO = process.argv.includes('--humo'); // prueba: userData temporal, datos inventados, captura y salir
@@ -65,7 +66,7 @@ function guardarCacheCorreo(r) {
 }
 function cargarCacheCorreo() {
   if (!Correo || HUMO) return;
-  try { const c = Correo.desdeCache(fs.readFileSync(CACHE_CORREO(), 'utf8')); if (c && !bueno.correo) { bueno.correo = c; enviar('correo', { ...c, dias: diasAgenda }); } } catch { /* sin caché todavía */ }
+  try { const c = limpiar(Correo.desdeCache(fs.readFileSync(CACHE_CORREO(), 'utf8'))); if (c && !bueno.correo) { bueno.correo = c; enviar('correo', { ...c, dias: diasAgenda }); } } catch { /* sin caché todavía */ }
 }
 // Outlook clásico: si no está abierto se abre minimizado al arrancar la app y se espera a que acepte conexiones, para que la primera lectura no falle (ajustes.abrirOutlook = false lo desactiva).
 const outlookAbierto = () => new Promise(res => execFile('tasklist', ['/FI', 'IMAGENAME eq OUTLOOK.EXE', '/NH'], { windowsHide: true, timeout: 8000 }, (e, out) => res(e ? true : /OUTLOOK\.EXE/i.test(out || '')))); // si tasklist falla se da por abierto (no se hace nada)
@@ -87,7 +88,7 @@ async function leerCorreo() { // nunca dos lecturas de Outlook a la vez; si lleg
   if (!Correo || abriendoOutlook) return;
   if (leyendoCorreo) { pendienteCorreo = true; return; }
   leyendoCorreo = true;
-  try { const r = await Correo.leer({ dias: Math.max(diasAgenda, 14) }); conservar('correo', r.ok ? { ...r, dias: diasAgenda } : r); } // se leen ≥14 días (el overlay colorea alarmas lejanas); la pestaña pinta solo `dias`
+  try { const r = await Correo.leer({ dias: Math.max(diasAgenda, 14) }); conservar('correo', r.ok ? limpiar({ ...r, dias: diasAgenda }) : r); } // se leen ≥14 días (el overlay colorea alarmas lejanas); la pestaña pinta solo `dias`
   catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
   finally { leyendoCorreo = false; ultCorreo = Date.now(); if (pendienteCorreo) { pendienteCorreo = false; leerCorreo(); } }
 }

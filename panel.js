@@ -65,7 +65,7 @@ document.addEventListener('keydown', e => { // Esc: vacía el campo con texto de
   if (e.key !== 'Escape') return;
   const t = document.activeElement;
   if (t && t.tagName === 'TEXTAREA') return; // escribiendo una nota: Esc no cierra el panel (no se pierde el texto)
-  if (t && t.closest('#p-alarmas') && t.tagName === 'INPUT' && t.type !== 'checkbox' && t.value) { t.value = ''; t.dispatchEvent(new Event('input')); } else api.cerrar();
+  if (t && (t.closest('#p-alarmas') || t.id === 'ag-buscar') && t.tagName === 'INPUT' && t.type !== 'checkbox' && t.value) { t.value = ''; t.dispatchEvent(new Event('input')); } else api.cerrar();
 });
 
 
@@ -198,26 +198,28 @@ async function evAlarma(el) { // alterna la alarma del Gestor de este evento
   const a = alarmaDe(el), ms = +el.dataset.ms;
   if (a) { await window.alarmas.borrar(a.id); return evAviso('Alarma quitada'); }
   if (ms <= Date.now()) return evAviso('Ya ha pasado');
-  const g = await window.alarmas.crear({ nombre: tituloEv(el), tipo: 'fecha', objetivo: ms, ...(el.dataset.c && { color: el.dataset.c }) });
+  const g = await window.alarmas.crear({ nombre: tituloEv(el), tipo: 'fecha', objetivo: ms, deAgenda: true, ...(el.dataset.c && { color: el.dataset.c }) });
   if (!g.ok) return evAviso(g.error);
   const d = new Date(ms);
   evAviso('Alarma puesta ' + (dia0(d).getTime() === dia0(new Date()).getTime() ? '' : 'el ' + evFecha(d) + ' ') + 'a las ' + hhmm(d));
 }
 let agN = 7, agCarga = false, agScroll = false, agObs = null, agTimer = null; // días pintados · pidiendo más · el usuario ha hecho scroll · observador del botón
-const AG_MAX = 120;
+const AG_MAX = 120, norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); // sin tildes ni mayúsculas (buscador)
 function agMas() { if (agCarga || agN >= AG_MAX) return; agCarga = true; agScroll = false; clearTimeout(agTimer); agTimer = setTimeout(() => { agCarga = false; pintaAgenda(); }, 3e4); $('ag-mas').textContent = 'Cargando…'; $('ag-mas').disabled = true; api.agendaMas(); }
 $('p-agenda').addEventListener('scroll', () => { agScroll = true; }, { passive: true });
 $('agenda').addEventListener('click', e => { if (e.target.closest('#ag-mas')) agMas(); });
+$('ag-buscar').addEventListener('input', () => { $('p-agenda').scrollTop = 0; pintaAgenda(); });
 function pintaAgenda() {
-  const h = dia0(new Date()), eventos = correo && correo.ok ? correo.agenda || [] : [], n = correo && correo.ok && correo.dias || 7, top = $('p-agenda').scrollTop;
+  const h = dia0(new Date()), eventos = correo && correo.ok ? correo.agenda || [] : [], n = correo && correo.ok && correo.dias || 7, top = $('p-agenda').scrollTop, q = norm($('ag-buscar').value.trim()), pal = q.split(/\s+/).filter(Boolean);
   const fecha = i => new Date(h.getFullYear(), h.getMonth(), h.getDate() + i);
   const largo = d => d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' });
   const nombre = (d, i) => i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : largo(d).replace(/^./, c => c.toUpperCase());
-  const evDe = i => { const ini = fecha(i).getTime(), f = fecha(i + 1).getTime(); return eventos.filter(e => { const a = new Date(e.inicio).getTime(), b = new Date(e.fin || e.inicio).getTime(); return a < f && Math.max(b, a + 1) > ini; }).sort((x, y) => new Date(x.inicio) - new Date(y.inicio)); };
+  const evDe = i => { const ini = fecha(i).getTime(), f = fecha(i + 1).getTime(); return eventos.filter(e => { const a = new Date(e.inicio).getTime(), b = new Date(e.fin || e.inicio).getTime(); return a < f && Math.max(b, a + 1) > ini; }).sort((x, y) => new Date(x.inicio) - new Date(y.inicio)).filter(e => !q || pal.every(p => norm(e.titulo + ' ' + (e.lugar || '') + ' ' + (e.categoria || '')).includes(p))); };
   const dia = (i, ev) => `<div class="diah" role="button" tabindex="0" data-i="${i}" title="Añadir evento este día">${nombre(fecha(i), i)}</div>` + (ev.length ? ev.map(e => `<div class="evento" tabindex="0" data-ms="${alarmaMs(e)}"${/^#[0-9a-f]{6}$/i.test(e.color) ? ` data-c="${e.color}"` : ''}><span class="h">${e.todoDia ? 'Todo el día' : hhmm(new Date(e.inicio)) + (e.fin ? '–' + hhmm(new Date(e.fin)) : '')}</span><span class="tt" title="${esc(e.lugar)}">${esc(e.titulo)}${e.lugar ? `<small>${esc(e.lugar)}</small>` : ''}</span>${e.categoria && e.color ? `<span class="cat">${esc(e.categoria)}</span>` : ''}${e.id ? `<button class="editar-ev" data-k="${esc(clave(e))}" aria-label="Editar evento: ${esc(e.titulo)}" title="Editar">${SVG_LAPIZ}</button><button class="borrar-ev" data-k="${esc(clave(e))}" aria-label="Borrar evento: ${esc(e.titulo)}" title="Borrar de Outlook">${SVG_BASURA}</button>` : ''}<button class="pin-ev" aria-pressed="false" aria-label="Poner como alarma: ${esc(e.titulo)}" title="Poner como alarma">${SVG_PIN}</button></div>${confirmarBorrado(e)}`).join('') : '<div class="vacio">Sin eventos</div>');
   let html = '', ini = -1, fin = -1; // racha de días vacíos (desde el día 8 se agrupan en una línea)
   const cierra = () => { if (ini >= 0) html += `<div class="vacio fino">Sin eventos ${ini === fin ? 'el' : 'hasta el'} ${largo(fecha(fin))}</div>`; ini = fin = -1; };
-  for (let i = 0; i < n; i++) {
+  if (q) { for (let i = 0; i < n; i++) { const ev = evDe(i); if (ev.length) html += dia(i, ev); } if (!html) html = `<div class="vacio">Sin resultados en los próximos ${n} días</div>`; } // búsqueda: solo días con coincidencias
+  else for (let i = 0; i < n; i++) {
     const d = fecha(i), ev = evDe(i);
     if (i >= 7) { // separador discreto: mes nuevo, o lunes (semana nueva)
       const sep = d.getDate() === 1 ? d.toLocaleDateString('es-ES', { month: 'long' }).replace(/^./, c => c.toUpperCase()) : d.getDay() === 1 ? 'Semana del ' + d.getDate() : '';
@@ -226,7 +228,7 @@ function pintaAgenda() {
     if (i >= 7 && !ev.length) { if (ini < 0) ini = i; fin = i; continue; }
     cierra(); html += dia(i, ev);
   }
-  cierra();
+  if (!q) cierra();
   agN = n; $('ag-dias').textContent = n;
   if (n < AG_MAX) html += `<button id="ag-mas" class="btn-txt"${agCarga ? ' disabled' : ''}>${agCarga ? 'Cargando…' : 'Cargar 2 semanas más'}</button>`;
   $('agenda').innerHTML = html;

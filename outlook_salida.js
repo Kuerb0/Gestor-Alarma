@@ -9,7 +9,7 @@ const huella = a => `${a.nombre}|${a.objetivo}`;
 function planificar(alarmas, pendientesBorrar, ahora) {
   const ops = [];
   for (const a of alarmas) {
-    if (a.tipo !== 'fecha' || a.origen || a.descartada || !(a.objetivo > ahora)) continue;
+    if (a.tipo !== 'fecha' || a.origen || a.deAgenda || a.descartada || !(a.objetivo > ahora)) continue;
     if (!a.outlookId) ops.push({ op: 'crear', id: a.id, nombre: a.nombre, inicio: a.objetivo });
     else if (a.outlookHuella !== huella(a)) ops.push({ op: 'actualizar', id: a.id, nombre: a.nombre, inicio: a.objetivo, entryId: a.outlookId });
   }
@@ -35,4 +35,10 @@ function aplicar(ops, calendario = '', ps1 = path.join(__dirname, 'outlook_escri
     }));
 }
 
-module.exports = { planificar, sinDuplicadas, aplicar, huella, norm };
+// Quita de la agenda las copias «Alarma» que el Gestor exportó antes de un evento que ya existe (mismo título e inicio, otra categoría); las «Alarma» sin original se quedan.
+function sinCopiasAlarma(agenda, etiqueta = 'Alarma') {
+  const et = norm(etiqueta), t = e => new Date(e.inicio).getTime();
+  return agenda.filter(e => norm(e.categoria) !== et || !agenda.some(o => o !== e && norm(o.categoria) !== et && norm(o.titulo) === norm(e.titulo) && Math.abs(t(o) - t(e)) < 6e4));
+}
+
+module.exports = { planificar, sinDuplicadas, sinCopiasAlarma, aplicar, huella, norm };

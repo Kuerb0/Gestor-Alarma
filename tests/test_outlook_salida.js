@@ -27,4 +27,17 @@ const externas = [
   { id: 'postit:1', tipo: 'fecha', nombre: 'Simulación', objetivo: AHORA + 5e5, origen: 'postit' },           // de Post-It: no se toca
 ];
 assert.deepStrictEqual(O.sinDuplicadas(propias, externas).map(e => e.id), ['outlook:2', 'outlook:3', 'postit:1']);
+// lo fijado desde la Agenda ya existe en Outlook: no se exporta
+assert.deepStrictEqual(O.planificar([f('x', { deAgenda: true }), f('y')], [], AHORA).map(o => o.id), ['y']);
+
+// sin copias «Alarma»: se oculta la que el Gestor exportó junto a su evento original
+const ev = (titulo, categoria, ini) => ({ titulo, categoria, inicio: new Date(ini).toISOString() });
+const ag = [
+  ev('Examen Simulación', 'ATENCIÓN', AHORA),            // original
+  ev('Examen Simulación ', 'Alarma', AHORA + 1e3),        // copia (espacio final): se quita
+  ev('Solo alarma', 'Alarma', AHORA),                      // sin original: se queda
+  ev('Reunión', 'Trabajo', AHORA), ev('Reunión', 'Trabajo', AHORA + 864e5), // mismo título, otra hora: se quedan
+  ev('Reunión', 'Alarma', AHORA + 2 * 864e5),              // «Alarma» a otra hora que el original: se queda
+];
+assert.deepStrictEqual(O.sinCopiasAlarma(ag).map(e => e.titulo + '|' + e.categoria), ['Examen Simulación|ATENCIÓN', 'Solo alarma|Alarma', 'Reunión|Trabajo', 'Reunión|Trabajo', 'Reunión|Alarma']);
 console.log('TEST OK');

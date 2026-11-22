@@ -208,6 +208,7 @@ select.campo option { background: #2b2f38; color: #fff; }
 ::-webkit-scrollbar { width: 6px; height: 3px; } ::-webkit-scrollbar-thumb { background: var(--b1); border-radius: 3px; } ::-webkit-scrollbar-track { background: transparent; }
 @media (prefers-reduced-motion: reduce) { *, ::before, ::after { transition: none !important; } .globo.suena, .fila.sonando { animation: none; } }
 /* nuevo evento (Agenda) */
+#ag-buscar { margin: 0 0 8px; }
 #p-agenda > h2, #p-tiempo > h2, #p-sistema > h2 { justify-content: space-between; } #p-agenda > h2 .btn-sec, .wd { text-transform: none; letter-spacing: 0; }
 .wd[aria-pressed=true] { background: var(--ac-v); font-weight: 600; } /* widget ya en el escritorio: pulsar lo quita */
 #p-tiempo > h2 + #tiempo, #p-sistema > h2 + #sistema { margin-top: 6px; }

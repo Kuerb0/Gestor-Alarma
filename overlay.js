@@ -73,9 +73,9 @@ function pintar() {
   if (suena && !SIN_SONIDO && ahora >= silencioHasta && ahora - ultimoPitido >= 1000) { ultimoPitido = ahora; pitido(); }
 }
 // Color de una alarma sin color propio (las de Outlook y las creadas aquí): el del evento de la agenda con su nombre y hora; si no, el de otro evento del mismo nombre ese día
-const COL = /^#[0-9a-f]{6}$/i;
+const COL = /^#[0-9a-f]{6}$/i, norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 function colorAgenda(a) {
-  const mismo = agenda.filter(e => COL.test(e.color) && e.titulo.slice(0, 60) === a.nombre), dia = new Date(a.objetivo).toDateString();
+  const mismo = agenda.filter(e => COL.test(e.color) && norm(e.titulo.trim().slice(0, 60)) === norm(a.nombre)), dia = new Date(a.objetivo).toDateString();
   const e = mismo.find(x => +new Date(x.inicio) === a.objetivo) || mismo.find(x => new Date(x.inicio).toDateString() === dia);
   return e ? e.color : null;
 }
@@ -83,7 +83,7 @@ function colorAgenda(a) {
 const MAXQ = 6, elsQ = new Map();
 let agenda = [];
 function pintarAgenda(ahora) {
-  const en = agenda.filter(e => e.cuadro !== false && (e.fin || e.todoDia) && (!e.todoDia || e.listada)).map(e => ({ ...e, i: +new Date(e.inicio), f: +new Date(e.fin || +new Date(e.inicio) + 864e5), k: e.titulo + '|' + e.inicio })).filter(e => e.i - (e.antes ?? 60) * 6e4 <= ahora && ahora < e.f)
+  const en = agenda.filter(e => e.cuadro !== false && (e.fin || e.todoDia) && (!e.todoDia || e.listada)).map(e => ({ ...e, i: +new Date(e.inicio), f: +new Date(e.fin || +new Date(e.inicio) + 864e5), k: e.titulo + '|' + e.inicio })).filter(e => e.i - (e.antes ?? 60) * 6e4 <= ahora && ahora < e.f && !(e.i > ahora && datos.some(a => a.tipo === 'fecha' && (!a.origen || a.origen === 'outlook') && norm(a.nombre) === norm(e.titulo) && Math.abs(a.objetivo - e.i) < 6e4))) // antes de empezar, si ya hay alarma de ese evento, no se duplica la ficha
     .sort((a, b) => (a.i > ahora) - (b.i > ahora) || (a.i > ahora ? a.i - b.i : a.f - b.f)).slice(0, MAXQ); // primero los en curso (el que acaba antes), luego los próximos; el orden final con las alarmas lo da pintar()
   for (const [k, e] of elsQ) if (!en.some(x => x.k === k)) { e.remove(); elsQ.delete(k); }
   return en.map(ev => {
