@@ -505,6 +505,7 @@ function pintaWidgets() {
   const dispo = Math.max(160, g.clientWidth - 22);
   [...g.children].forEach((b, i) => {
     const v = WVARIANTES[i], ancho = WANCHO[v.tipo][v.cfg.tam], el = b.firstElementChild, n = wN(v), cfg = { ...v.cfg, uid: 'v' + i };
+    const abierto = wCfgs.find(w => w.tipo === v.tipo && Object.keys(v.cfg).every(k => w.cfg[k] === v.cfg[k])); el.dataset.tema = abierto && abierto.tema || 'claroscuro'; // vista previa con el tema del widget si está abierto; si no, claroscuro (se lee sobre cualquier fondo)
     el.style.setProperty('width', ancho + 'px'); el.style.setProperty('zoom', Math.min(1, dispo / ancho));
     el.innerHTML = v.tipo === 'agenda' ? htmlAgenda(correo, cfg) : v.tipo === 'notas' ? htmlNotas(notas, cfg) : v.tipo === 'tiempo' ? htmlCiudades(meteo, ciudadSel, 0, meteoT, false, cfg).html : sis || bateria ? htmlSistema(sis, bateria, cfg) : '<div class="vacio">Cargando…</div>';
     colorea(el); b.setAttribute('aria-pressed', n > 0); b.lastElementChild.textContent = n ? (n > 1 ? n + ' en el escritorio' : 'En el escritorio') + ' · pulsa para añadir otro' : 'Pulsa para añadirlo al escritorio';

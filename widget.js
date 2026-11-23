@@ -24,6 +24,17 @@ const NIVELES = tipo === 'notas' ? { Mínimo: { fecha: 0, nueva: 0 }, Normal: { 
   : { Mínimo: { cpu: 1, ram: 1, disco: 0, disp: 0, bat: 0 }, Normal: { cpu: 1, ram: 1, disco: 1, disp: 0, bat: 1 }, Completo: { cpu: 1, ram: 1, disco: 1, disp: 1, bat: 1 } };
 let cfg = { tam: 'm', ndias: tipo === 'agenda' ? 3 : 5, modo: 'eventos', h0: tipo === 'agenda' ? 8 : 0, h1: tipo === 'agenda' ? 20 : 24 }; try { cfg = { ...cfg, ...JSON.parse(new URLSearchParams(location.search).get('cfg')) }; } catch {}
 if (cfg.ciudad) ciudadSel = cfg.ciudad; // cada widget del Tiempo guarda su ciudad (dos widgets pueden enseñar ciudades distintas)
+// ---- tema de contraste: automático (main.js mide el fondo del escritorio y manda el tema efectivo) o elegido a mano. data-tema en #w; los colores de cada tema están en panel.css
+const TEMAS = [['auto', 'Automático'], ['claro', 'Claro (fondo oscuro)'], ['oscuro', 'Oscuro (fondo claro)'], ['claroscuro', 'Claroscuro (fondo mixto)'], ['velado', 'Velado'], ['contraste', 'Alto contraste']];
+const TEMAS_EF = ['claro', 'oscuro', 'claroscuro', 'velado', 'contraste'], qs = new URLSearchParams(location.search);
+let tema = TEMAS.some(([k]) => k === qs.get('tema')) ? qs.get('tema') : 'auto', temaEf = TEMAS_EF.includes(qs.get('ef')) ? qs.get('ef') : 'claroscuro';
+const nombreTema = k => (TEMAS.find(([c]) => c === k) || TEMAS[0])[1].replace(/ \(.*\)$/, '');
+function aplicaTema() {
+  const ef = tema === 'auto' ? temaEf : tema; $('w').dataset.tema = ef;
+  $('w-g').title = 'Tamaño, contenido y tema · Tema: ' + (tema === 'auto' ? 'Automático (' + nombreTema(ef).toLowerCase() + ')' : nombreTema(tema));
+}
+aplicaTema();
+api.on('widget:tema', t => { if (!t) return; if (TEMAS.some(([k]) => k === t.tema)) tema = t.tema; if (TEMAS_EF.includes(t.efectivo)) temaEf = t.efectivo; aplicaTema(); if (!$('w-cfg').hidden) pintaCfg(); });
 const guardaCfg = () => { api.widgetCfg(cfg); pinta(); pintaCfg(); };
 function pintaCfg() {
   const tam = [['p', 'Pequeño'], ['m', 'Mediano'], ['g', 'Grande']].map(([k, n]) => `<button class="cfg-b" data-tam="${k}" aria-pressed="${cfg.tam === k}">${n}</button>`).join('');
@@ -33,7 +44,8 @@ function pintaCfg() {
   const hop = (de, a, v) => Array.from({ length: a - de + 1 }, (_, k) => de + k).map(h => `<option value="${h}"${h === v ? ' selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join(''); // rango de horas editable (mín. 2 h entre Desde y Hasta)
   const selHoras = `<div class="cfg-f"><span>Horas</span><select class="cfg-s" data-hh="h0" aria-label="Hora inicial">${hop(0, 22, cfg.h0)}</select><span>a</span><select class="cfg-s" data-hh="h1" aria-label="Hora final">${hop(Math.min(cfg.h0 + 2, 24), 24, cfg.h1)}</select></div>`;
   const ag = tipo !== 'agenda' ? '' : `<div class="cfg-f"><span>Ver</span>${[['eventos', 'Eventos'], ['horas', 'Horas']].map(([k, n]) => `<button class="cfg-b" data-modo="${k}" aria-pressed="${cfg.modo === k}">${n}</button>`).join('')}</div>${cfg.modo === 'horas' ? selHoras : `<div class="cfg-f"><span>Días</span>${[1, 3, 7].map(n => `<button class="cfg-b" data-nd="${n}" aria-pressed="${cfg.ndias === n}">${n}</button>`).join('')}</div>`}`;
-  $('w-cfg').innerHTML = `${ag}${tipo === 'tiempo' && cfg.graf !== false ? selHoras : ''}<div class="cfg-f"><span>Tamaño</span>${tam}</div><div class="cfg-f"><span>Detalle</span>${niv}</div><div class="cfg-g">${sw}</div>${nd}`;
+  const selTema = `<div class="cfg-f"><span>Tema</span><select class="cfg-s" id="w-tema" aria-label="Tema de contraste" title="${tema === 'auto' ? 'Automático: mide el fondo del escritorio (ahora: ' + nombreTema(temaEf).toLowerCase() + ')' : nombreTema(tema)}">${TEMAS.map(([k, n]) => `<option value="${k}"${k === tema ? ' selected' : ''}>${n}</option>`).join('')}</select></div>`;
+  $('w-cfg').innerHTML = `${ag}${tipo === 'tiempo' && cfg.graf !== false ? selHoras : ''}<div class="cfg-f"><span>Tamaño</span>${tam}</div><div class="cfg-f"><span>Detalle</span>${niv}</div>${selTema}<div class="cfg-g">${sw}</div>${nd}`;
 }
 $('w-g').onclick = () => { const h = $('w-cfg').hidden; $('w-cfg').hidden = !h; $('w-g').setAttribute('aria-expanded', h); if (h) pintaCfg(); };
 document.addEventListener('contextmenu', e => { // clic derecho: abre el panel de ajustes (con el rango de horas) y lo deja a la vista
@@ -49,6 +61,7 @@ $('w-cfg').addEventListener('click', e => {
   guardaCfg();
 });
 $('w-cfg').addEventListener('change', e => { // desplegables «Desde» / «Hasta»: siempre quedan al menos 2 h entre uno y otro
+  if (e.target.id === 'w-tema') { tema = TEMAS.some(([k]) => k === e.target.value) ? e.target.value : 'auto'; aplicaTema(); api.widgetTema(tema); pintaCfg(); return; } // el tema no es parte de cfg: va por su propio canal
   const hh = e.target.dataset.hh;
   if (hh) { const v = +e.target.value; if (hh === 'h0') { cfg.h0 = v; cfg.h1 = Math.max(cfg.h1, v + 2); } else { cfg.h1 = v; cfg.h0 = Math.min(cfg.h0, v - 2); } guardaCfg(); return; }
   const k = e.target.dataset.k; if (!k) return; cfg[k] = e.target.checked; guardaCfg(); });

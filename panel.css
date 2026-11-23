@@ -308,3 +308,31 @@ select.campo option { background: #2b2f38; color: #fff; }
 #w-c > .campo + .wn-lista { margin-top: 8px; } #wn-texto { width: 100%; resize: none; display: block; font-size: 12.5px; }
 .wn-nota { padding: 7px 10px; margin-bottom: 5px; border-radius: 16px; background: var(--vidrio); box-shadow: 0 6px 18px var(--sombra); }
 .wn-t { white-space: pre-wrap; word-break: break-word; font-size: 12.5px; line-height: 1.4; } .wn-nota time { display: block; margin-top: 3px; color: var(--sec); font-size: 11px; }
+/* ---- temas de contraste de los widgets (data-tema en #w del widget y en las vistas previas de la galería). Cada tema fija texto, halos, trazos y velo; el estilo
+   (consumo/cristal/fino/flotante/solido) solo pone el marco y se combina con cualquiera. claro = texto claro para fondo oscuro; oscuro = texto oscuro para fondo claro;
+   claroscuro = texto claro con halo oscuro y trazos con contorno (se lee sobre negro y sobre blanco); velado = velo oscuro translúcido; contraste = blanco sobre velo casi negro.
+   El «automático» no es un tema aquí: main.js mide el fondo y el widget pone uno de estos. */
+[data-tema] { color: var(--txt); --ac-t: color-mix(in srgb, var(--acento) 72%, var(--txt)); --trazo: var(--acento); --pas: .45; --pasll: .3; --pasw: .5; --ll: .6;
+  --ts: rgba(0,0,0,.55); --halo: 0 1px 3px var(--ts), 0 0 8px var(--ts); --svgf: drop-shadow(0 1px 2px var(--ts)); }
+[data-tema=claro] { --txt: #fff; --sec: rgba(255,255,255,.78); --campo: rgba(0,0,0,0); --ambar: #ffc15a; --rojo: #ff6b5e; color-scheme: dark; }
+[data-tema=oscuro] { --txt: #14161a; --sec: rgba(20,22,26,.72); --campo: rgba(255,255,255,.55); --ambar: #a85f00; --rojo: #c8261a; --ts: rgba(255,255,255,.75); color-scheme: light; }
+[data-tema=claroscuro] { --txt: #fff; --sec: rgba(255,255,255,.94); --campo: rgba(0,0,0,0); --ambar: #ffc15a; --rojo: #ff6b5e; color-scheme: dark;
+  --ts: rgba(0,0,0,.85); --halo: 0 0 2px var(--ts), 0 0 4px var(--ts); --tstroke: rgba(0,0,0,.85); --tsw: 2.6px; /* halo del texto HTML y contorno del texto SVG */
+  --svgf: drop-shadow(0 0 1px rgba(0,0,0,.95)) drop-shadow(0 0 2px rgba(0,0,0,.75)); --svgc: var(--svgf); --glow: none; /* contorno oscuro fino bajo trazos, barras y puntos */
+  --pout: 1px solid rgba(0,0,0,.85); --pista: rgba(128,128,128,.5); --pista-w: rgba(128,128,128,.5); --rej: rgba(255,255,255,.55); --campo-n: rgba(14,18,26,.62);
+  --cfgfondo: rgba(14,18,26,.86); --barfondo: rgba(14,18,26,.78); --barhover: rgba(14,18,26,.95); --pas: .65; --pasll: .5; --pasw: .7; }
+[data-tema=velado] { --txt: #fff; --sec: rgba(255,255,255,.86); --campo: rgba(0,0,0,0); --ambar: #ffc15a; --rojo: #ff6b5e; color-scheme: dark;
+  --velo: rgba(10,12,16,.55); --ts: rgba(0,0,0,.4); --halo: 0 1px 2px var(--ts); --svgf: none; --pas: .55; --pasll: .4; --pasw: .6; --rej: rgba(255,255,255,.3); --barfondo: rgba(10,12,16,.55); }
+[data-tema=contraste] { --txt: #fff; --sec: #fff; --campo: rgba(0,0,0,0); --ambar: #ffd27a; --rojo: #ff8a7e; color-scheme: dark;
+  --velo: rgba(0,0,0,.8); --halo: none; --svgf: none; --trazo: color-mix(in srgb, var(--acento) 60%, #fff); --glow: none; --rej: rgba(255,255,255,.8); --ll: 1;
+  --pas: .85; --pasll: .75; --pasw: .85; --pista: rgba(255,255,255,.3); --pista-w: rgba(255,255,255,.3); --pout: 1px solid rgba(255,255,255,.8); --barfondo: rgba(0,0,0,.8); }
+[data-tema] .pas { opacity: var(--pas); } [data-tema] .fr-ll { opacity: var(--ll); } [data-tema] .fr-ll.pas { opacity: var(--pasll); } [data-tema] .wh-b.pas { opacity: var(--pasw); }
+[data-tema] .fr-g { filter: var(--svgf); } [data-tema] .wh { filter: var(--svgc, none); }
+[data-tema] .fr-l { stroke: var(--trazo); filter: var(--glow, drop-shadow(0 0 4px var(--ac-v))); } [data-tema] .fr-ya, [data-tema] .fr-k { stroke: var(--trazo); } [data-tema] .fr-p { fill: var(--trazo); }
+[data-tema] .fr-e, [data-tema] .wh-l { stroke: var(--rej, var(--b2)); }
+[data-tema] svg text:not(.fr-i) { paint-order: stroke; stroke: var(--tstroke, none); stroke-width: var(--tsw, 0); stroke-linejoin: round; } /* contorno oscuro del texto SVG (claroscuro) */
+[data-tema] .barra progress { outline: var(--pout, none); outline-offset: 0; }
+[data-tema=contraste] .fr-l { stroke-width: 3.3px; } [data-tema=contraste] .fr-ya { stroke-width: 1.8px; } [data-tema=contraste] .fr-hoy { stroke-width: 3px; opacity: .7; } [data-tema=contraste] .fr-k { stroke-width: 3px; }
+[data-tema=contraste] .fr-e, [data-tema=contraste] .wh-l { stroke-width: 1.5px; } [data-tema=contraste] .wh-ya { stroke-width: 2.25px; } [data-tema=contraste] .wh-b rect { fill-opacity: .6; stroke-width: 1.8px; }
+[data-tema=contraste] .fr-t, [data-tema=contraste] .fr-h, [data-tema=contraste] .wh-h, [data-tema=contraste] .wh-b text { font-weight: 700; }
+.wg-v[data-tema] { text-shadow: var(--halo); } /* vista previa de la galería */

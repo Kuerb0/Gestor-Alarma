@@ -1,7 +1,8 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences, Notification, clipboard } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences, Notification, clipboard, desktopCapturer } = require('electron');
 const fs = require('fs'), path = require('path'), { spawn, execFile } = require('child_process');
 const Act = require('./actualizar'); // versiones nuevas en GitHub Releases
 const Salida = require('./outlook_salida'), limpiar = c => c && Array.isArray(c.agenda) ? { ...c, agenda: Salida.sinCopiasAlarma(c.agenda) } : c; // sin las copias «Alarma» que el Gestor exportó
+const TemaFondo = require('./tema_fondo'); // tema de contraste automático de los widgets (mide el fondo del escritorio)
 const Alarmas = require('./alarmas'); // motor del antiguo Gestor-Alarmas (overlay, datos, Post-It/Outlook)
 
 const HUMO = process.argv.includes('--humo'); // prueba: userData temporal, datos inventados, captura y salir
@@ -212,7 +213,7 @@ function aplicarCompleta() {
   if (completa && abierto && !ajustes.fijado) poner(false);
   if (raya && !raya.isDestroyed()) completa || abierto ? raya.hide() : raya.showInactive();
   verFichas();
-  widgets.forEach(w => !w.isDestroyed() && (completa ? w.hide() : w.showInactive()));
+  widgets.forEach(w => !w.isDestroyed() && (completa ? w.hide() : w.showInactive())); if (!completa) medirTodos(); // al salir de pantalla completa, se vuelve a medir el fondo if (!completa) medirTodos(); // al salir de pantalla completa, se vuelve a medir el fondo
   pintarAct();
 }
 function vigilarCompleta() {
@@ -242,6 +243,11 @@ const CFG_BOOL = { tiempo: ['ciu', 'graf', 'ico', 'lluvia', 'tmp', 'res', 'det',
 const WMIN = { ancho: 160, alto: 80 }, WMAX = 1400; // límites del tamaño a mano
 const gw = id => (ajustes.widgets && ajustes.widgets[id]) || {};
 const ponGw = (id, v) => { ajustes.widgets = { ...ajustes.widgets, [id]: { ...gw(id), ...v } }; };
+// Tema de contraste (ajustes.widgets.<id>.tema): auto | claro | oscuro | claroscuro | velado | contraste. En 'auto', medirFondo() mide el escritorio detrás del widget y decide (temaEf: id -> último tema efectivo).
+const TEMAS = ['auto', 'claro', 'oscuro', 'claroscuro', 'velado', 'contraste'], temaEf = new Map(), medirT = new Map();
+const temaDe = id => TEMAS.includes(gw(id).tema) ? gw(id).tema : 'auto';
+const efectivoDe = id => { const t = temaDe(id); return t === 'auto' ? temaEf.get(id) || 'claroscuro' : t; }; // sin medir todavía: claroscuro, el más seguro
+const enviarTemaW = id => { const w = widgets.get(id); w && !w.isDestroyed() && w.webContents.send('widget:tema', { tema: temaDe(id), efectivo: efectivoDe(id) }); };
 const tipoDe = id => { const t = gw(id).tipo || id; return WIDGETS[t] ? t : null; };
 const abiertosDe = tipo => [...widgets.keys()].filter(id => tipoDe(id) === tipo);
 function cfgWidget(id, c = gw(id).cfg) { // configuración saneada: tamaño (p/m/g) + interruptores (todos activos por defecto)
@@ -258,7 +264,7 @@ function cfgWidget(id, c = gw(id).cfg) { // configuración saneada: tamaño (p/m
 const anchoWidget = id => { const g = gw(id); return Number.isFinite(g.ancho) ? Math.round(Math.max(WMIN.ancho, Math.min(WMAX, g.ancho))) : WIDGETS[tipoDe(id)].ancho[cfgWidget(id).tam]; };
 const altoFijo = id => { const g = gw(id); return Number.isFinite(g.alto) ? Math.round(Math.max(WMIN.alto, Math.min(WMAX, g.alto))) : 0; };
 const sinTamanoManual = id => { const { ancho, alto, ...resto } = gw(id); ajustes.widgets = { ...ajustes.widgets, [id]: resto }; };
-const pintarWidgets = () => { const ids = [...widgets.keys()]; enviar('widgets', ids.map(tipoDe)); enviar('widgetsCfg', ids.map(id => ({ tipo: tipoDe(id), cfg: cfgWidget(id) }))); tray && tray.setContextMenu(menu()); };
+const pintarWidgets = () => { const ids = [...widgets.keys()]; enviar('widgets', ids.map(tipoDe)); enviar('widgetsCfg', ids.map(id => ({ tipo: tipoDe(id), cfg: cfgWidget(id), tema: efectivoDe(id) }))); tray && tray.setContextMenu(menu()); };
 function posicionWidget(id) { // la guardada si sigue dentro de alguna pantalla; si no, arriba a la izquierda del monitor principal (en cascada si ya hay otros del mismo tipo)
   const g = gw(id), a = area(), tipo = tipoDe(id), w = anchoWidget(id), cascada = abiertosDe(tipo).filter(x => x !== id).length * 30;
   if (Number.isFinite(g.x) && Number.isFinite(g.y) && screen.getAllDisplays().some(d => { const b = d.workArea; return g.x + 60 > b.x && g.x < b.x + b.width - 60 && g.y >= b.y && g.y < b.y + b.height - 60; })) return { x: Math.round(g.x), y: Math.round(g.y) };
@@ -268,7 +274,7 @@ function guardarWidget(id, abiertoW) {
   const w = widgets.get(id), b = w && !w.isDestroyed() ? w.getBounds() : gw(id);
   ponGw(id, { x: b.x, y: b.y, abierto: abiertoW }); guardarAjustes();
 }
-const cargarWidget = (w, id) => w.loadFile('widget.html', { query: { tipo: tipoDe(id), cfg: JSON.stringify(cfgWidget(id)), estilo: gw(id).estilo || 'consumo', fijo: altoFijo(id) ? '1' : '' } });
+const cargarWidget = (w, id) => w.loadFile('widget.html', { query: { tipo: tipoDe(id), cfg: JSON.stringify(cfgWidget(id)), estilo: gw(id).estilo || 'consumo', tema: temaDe(id), ef: efectivoDe(id), fijo: altoFijo(id) ? '1' : '' } });
 function ponerWidget(id, v, c) { // abre (v) o quita el widget `id`; `c` (opcional): configuración que se aplica al abrirlo; si ya está abierto se recarga con ella
   if (!tipoDe(id)) return;
   const w0 = widgets.get(id);
@@ -279,6 +285,7 @@ function ponerWidget(id, v, c) { // abre (v) o quita el widget `id`; `c` (opcion
   if (!v) {
     if (!w0) return; guardarWidget(id, false); widgets.delete(id); if (!w0.isDestroyed()) w0.destroy();
     if (id !== tipoDe(id)) { const { [id]: _, ...resto } = ajustes.widgets; ajustes.widgets = resto; guardarAjustes(); } // las copias no dejan rastro; el primero de cada tipo recuerda posición y ajustes
+    clearTimeout(medirT.get(id)); medirT.delete(id); temaEf.delete(id);
     pintarWidgets(); vigilarSistema(); return;
   }
   if (w0 && !w0.isDestroyed()) return;
@@ -287,9 +294,10 @@ function ponerWidget(id, v, c) { // abre (v) o quita el widget `id`; `c` (opcion
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false } });
   widgets.set(id, w);
   cargarWidget(w, id);
-  w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema', 'correo', 'notas'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); });
+  w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema', 'correo', 'notas'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); enviarTemaW(id); medirLuego(id, 900); });
   w.once('ready-to-show', () => { if (!completa) w.showInactive(); });
-  w.on('moved', () => { if (widgets.get(id) === w) guardarWidget(id, true); });
+  w.on('moved', () => { if (widgets.get(id) === w) { guardarWidget(id, true); medirLuego(id); } });
+  w.on('resized', () => { if (widgets.get(id) === w) medirLuego(id); });
   w.on('closed', () => { if (widgets.get(id) === w) { widgets.delete(id); pintarWidgets(); } });
   guardarWidget(id, true); pintarWidgets(); vigilarSistema();
 }
@@ -297,7 +305,7 @@ function nuevoWidget(tipo, c, desde) { // añade otro widget de `tipo`; `desde`:
   if (!WIDGETS[tipo]) return;
   const id = !widgets.has(tipo) ? tipo : tipo + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   if (id !== tipo) ajustes.widgets = { ...ajustes.widgets, [id]: { tipo } };
-  if (desde && widgets.has(desde)) { const o = gw(desde), b = widgets.get(desde).getBounds(); ponGw(id, { cfg: o.cfg, estilo: o.estilo, ancho: o.ancho, alto: o.alto, x: b.x + 28, y: b.y + 28 }); }
+  if (desde && widgets.has(desde)) { const o = gw(desde), b = widgets.get(desde).getBounds(); ponGw(id, { cfg: o.cfg, estilo: o.estilo, tema: o.tema, ancho: o.ancho, alto: o.alto, x: b.x + 28, y: b.y + 28 }); }
   ponerWidget(id, true, c);
   return id;
 }
@@ -305,6 +313,11 @@ const idWidget = wc => [...widgets].find(([, w]) => !w.isDestroyed() && w.webCon
 ipcMain.on('widget:poner', (_, tipo, v, c) => v === true ? nuevoWidget(tipo, c) : abiertosDe(tipo).forEach(id => ponerWidget(id, false))); // desde el panel: añadir otro / quitar los de ese tipo
 ipcMain.on('widget:duplicar', e => { const id = idWidget(e.sender); if (id) nuevoWidget(tipoDe(id), undefined, id); });
 ipcMain.on('widget:estilo', (e, est) => { const id = idWidget(e.sender); if (!id || !['consumo', 'cristal', 'fino', 'flotante', 'solido'].includes(est)) return; ponGw(id, { estilo: est }); guardarAjustes(); });
+ipcMain.on('widget:tema', (e, t) => {
+  const id = idWidget(e.sender); if (!id || !TEMAS.includes(t)) return;
+  ponGw(id, { tema: t }); guardarAjustes(); enviarTemaW(id); pintarWidgets();
+  if (t === 'auto') medirLuego(id, 150); // al volver a automático, se mide ya
+});
 ipcMain.on('widget:cfg', (e, c) => {
   const id = idWidget(e.sender); if (!id || !c || typeof c !== 'object') return;
   const tamAntes = cfgWidget(id).tam;
@@ -327,20 +340,55 @@ ipcMain.on('widget:tam', (e, ancho, alto, fin, ancla) => {
   const a = screen.getDisplayMatching(b).workArea, W = Math.round(Math.max(WMIN.ancho, Math.min(WMAX, a.width, ancho))), H = Math.round(Math.max(WMIN.alto, Math.min(WMAX, a.height, alto)));
   const x = an.includes('w') ? o.x + o.width - W : o.x, y = an.includes('n') ? o.y + o.height - H : o.y;
   w.setBounds({ x, y, width: W, height: H });
-  if (fin === true) { anclas.delete(id); ponGw(id, { ancho: W, alto: H, x, y }); guardarAjustes(); }
+  if (fin === true) { anclas.delete(id); ponGw(id, { ancho: W, alto: H, x, y }); guardarAjustes(); medirLuego(id); }
 });
 const origenMov = new Map(); // id -> posición al empezar a mover (dx/dy llegan desde ahí)
 ipcMain.on('widget:mover', (e, dx, dy, fin) => {
   const id = idWidget(e.sender); if (!id || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const w = widgets.get(id); if (!origenMov.has(id)) origenMov.set(id, w.getBounds());
   const o = origenMov.get(id); w.setBounds({ ...o, x: Math.round(o.x + dx), y: Math.round(o.y + dy) }); // setPosition agranda la ventana con el escalado de pantalla
-  if (fin === true) { origenMov.delete(id); guardarWidget(id, true); }
+  if (fin === true) { origenMov.delete(id); guardarWidget(id, true); medirLuego(id); }
 });
 ipcMain.on('widget:cerrar', e => { const id = idWidget(e.sender); if (id) ponerWidget(id, false); });
 ipcMain.on('widget:alto', (e, h) => { // el widget mide su contenido; la ventana se ajusta (80–900 px)
   const id = idWidget(e.sender); if (!id || !Number.isFinite(h) || altoFijo(id)) return; // con alto a mano, no se ajusta al contenido
   const w = widgets.get(id), b = w.getBounds(); w.setBounds({ x: b.x, y: b.y, width: anchoWidget(id), height: Math.round(Math.min(900, Math.max(80, h))) });
 });
+
+// ---- tema automático: mide el escritorio detrás del widget. Se pone la ventana del widget a opacidad 0 (si no, se vería a sí mismo), se captura la pantalla donde está,
+// se recorta el rectángulo del cuadro y TemaFondo.decidirTema elige el tema (con histéresis respecto al anterior). Cuándo: al abrirse, al terminar de moverlo o cambiarle
+// el tamaño (600 ms de calma), y cada 5 min (escalonados). No en pantalla completa ni en la prueba de humo. Si algo falla: claroscuro, el tema que se lee sobre cualquier fondo.
+const pausaMs = ms => new Promise(r => setTimeout(r, ms));
+let midiendo = Promise.resolve(); // las mediciones van de una en una (comparten la captura de pantalla y la opacidad de las ventanas)
+function medirLuego(id, ms = 600) { // debounce por widget; solo los que están en automático
+  clearTimeout(medirT.get(id));
+  if (HUMO || temaDe(id) !== 'auto') { medirT.delete(id); return; }
+  medirT.set(id, setTimeout(() => { medirT.delete(id); midiendo = midiendo.then(() => medirFondo(id)).catch(e => log('tema: ' + (e && e.message || e))); }, ms));
+}
+async function medirFondo(id) {
+  const w = widgets.get(id);
+  if (HUMO || completa || !w || w.isDestroyed() || temaDe(id) !== 'auto' || !w.isVisible()) return;
+  let tema = 'claroscuro', opacidad = w.getOpacity();
+  try {
+    w.setOpacity(0); await pausaMs(120); // da tiempo a que el escritorio se repinte sin el widget
+    const b = w.getBounds(), d = screen.getDisplayMatching(b), pantallas = screen.getAllDisplays();
+    const fuentes = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) } });
+    const f = fuentes.find(s => s.display_id === String(d.id)) || (fuentes.length === pantallas.length ? fuentes[pantallas.findIndex(x => x.id === d.id)] : null) || (fuentes.length === 1 ? fuentes[0] : null);
+    if (!f || f.thumbnail.isEmpty()) throw new Error('sin captura de la pantalla ' + d.id);
+    const { width: iw, height: ih } = f.thumbnail.getSize(), ex = iw / d.bounds.width, ey = ih / d.bounds.height, m = 10; // m: margen transparente de la ventana (10 px) alrededor del cuadro
+    const x0 = Math.max(0, Math.round((b.x - d.bounds.x + m) * ex)), y0 = Math.max(0, Math.round((b.y - d.bounds.y + m) * ey));
+    const x1 = Math.min(iw, Math.round((b.x - d.bounds.x + b.width - m) * ex)), y1 = Math.min(ih, Math.round((b.y - d.bounds.y + b.height - m) * ey));
+    if (x1 - x0 < 4 || y1 - y0 < 4) throw new Error('widget fuera de la pantalla');
+    const trozo = f.thumbnail.crop({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 }), { width, height } = trozo.getSize();
+    tema = TemaFondo.decidirTema(trozo.toBitmap(), width, height, temaEf.get(id)).tema;
+  } catch (e) { log('tema: no se pudo medir el fondo de «' + id + '» (' + (e && e.message || e) + '); claroscuro'); }
+  finally { if (!w.isDestroyed()) w.setOpacity(opacidad || 1); }
+  if (!widgets.has(id) || temaDe(id) !== 'auto') return; // lo quitaron o cambió a mano mientras se medía
+  const antes = temaEf.get(id); temaEf.set(id, tema); enviarTemaW(id);
+  if (antes !== tema) { log('tema de «' + id + '»: ' + (antes || '—') + ' -> ' + tema); pintarWidgets(); }
+}
+function medirTodos() { [...widgets.keys()].filter(id => temaDe(id) === 'auto').forEach((id, i) => medirLuego(id, 1000 + i * 8000)); } // cada 5 min, uno cada 8 s
+setInterval(medirTodos, 3e5);
 
 // ---- actualización: pastilla en el panel y entradas en la bandeja; en pantalla completa no se enseña nada nuevo
 let nueva = null, estAct = 'disponible', msgAct = '', ocupado = false;
@@ -779,7 +827,23 @@ async function humo() {
     if ((ajustes.widgets.tiempo || {}).estilo !== 'solido') fallos.push('widget: el estilo no se guarda');
     await js(wt, `document.getElementById('w-e').click()`); await esp(150); // vuelve a cristal
     await captura('widget-tiempo', wt); await captura('widget-sistema', ws);
-    nativeTheme.themeSource = 'system'; await esp(400); await captura('widget-tiempo-oscuro', wt); await captura('widget-sistema-oscuro', ws);
+    nativeTheme.themeSource = 'system'; await esp(400);
+    // temas de contraste: por defecto 'auto' (en humo no se mide: claroscuro); cada tema cambia data-tema y se guarda; el selector del panel de ajustes los ofrece
+    { const dt = w => js(w, `document.getElementById('w').dataset.tema`);
+      if (temaDe('tiempo') !== 'auto' || await dt(wt) !== 'claroscuro') fallos.push('widget: el tema por defecto no es automático (claroscuro sin medir): ' + temaDe('tiempo') + '/' + await dt(wt));
+      await js(wt, `document.getElementById('w-g').click()`); await esp(150);
+      if (await js(wt, `document.querySelectorAll('#w-tema option').length`) !== 6) fallos.push('widget: el selector de tema no tiene las 6 opciones');
+      if (!/Automático \(claroscuro\)/.test(await js(wt, `document.getElementById('w-g').title`))) fallos.push('widget: el título del botón no dice el tema efectivo');
+      for (const t of ['claro', 'oscuro', 'claroscuro', 'velado', 'contraste']) {
+        await js(wt, `api.widgetTema('${t}')`); await js(ws, `api.widgetTema('${t}')`); await esp(250);
+        if (await dt(wt) !== t || temaDe('tiempo') !== t || (ajustes.widgets.tiempo || {}).tema !== t) fallos.push('widget: el tema ' + t + ' no se aplica/guarda (' + await dt(wt) + ')');
+        if (t === 'claroscuro' && !(await js(wt, `getComputedStyle(document.querySelector('.fr-t')).strokeWidth`)).startsWith('2.6')) fallos.push('widget: el claroscuro no contornea el texto SVG');
+        await captura('widget-tiempo-tema-' + t, wt); await captura('widget-sistema-tema-' + t, ws);
+      }
+      await js(wt, `api.widgetTema('inventado')`); await esp(100); if (temaDe('tiempo') !== 'contraste') fallos.push('widget: acepta un tema inválido');
+      await js(wt, `api.widgetTema('auto')`); await js(ws, `api.widgetTema('auto')`); await esp(250);
+      if (temaDe('tiempo') !== 'auto' || await dt(wt) !== 'claroscuro') fallos.push('widget: volver a automático falla');
+      await js(wt, `document.getElementById('w-g').click()`); }
     await js(wt, `document.getElementById('w-x').click()`); await esp(300);
     if (widgets.has('tiempo')) fallos.push('widget Tiempo: la × no lo quita');
     ponerWidget('sistema', false); await esp(200);

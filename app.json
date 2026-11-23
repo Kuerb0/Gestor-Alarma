@@ -8,7 +8,7 @@
   "exe": {
     "modo": "electron",
     "electron": "45.3.1",
-    "archivos": ["package.json", "main.js", "preload.js", "correo.js", "outlook.ps1", "pantalla_completa.ps1", "uso.js", "categorias_uso.js", "meteo.js", "alarmas.js", "tiempo.js", "puente.js", "outlook_salida.js", "outlook_escribir.ps1", "overlay.html", "overlay.js", "sistema.js", "dispositivos.ps1", "actualizar.js", "graficos.js", "graficos_uso.js", "widget.html", "widget.js", "widget.css", "panel.html", "panel.css", "panel.js", "pestana_alarmas.js", "assets"],
+    "archivos": ["package.json", "main.js", "preload.js", "correo.js", "outlook.ps1", "pantalla_completa.ps1", "uso.js", "categorias_uso.js", "meteo.js", "alarmas.js", "tiempo.js", "puente.js", "outlook_salida.js", "outlook_escribir.ps1", "overlay.html", "overlay.js", "sistema.js", "dispositivos.ps1", "actualizar.js", "graficos.js", "graficos_uso.js", "tema_fondo.js", "widget.html", "widget.js", "widget.css", "panel.html", "panel.css", "panel.js", "pestana_alarmas.js", "assets"],
     "datos_usuario": []
   },
   "prueba": { "segundos": 8, "argumentos": ["--user-data-dir={tmp}/datos"] }

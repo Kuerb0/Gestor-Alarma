@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema', 'actualizacion', 'widgets', 'widgetsCfg', 'nuevo-evento', 'notas'];
+const CANALES = ['correo', 'meteo', 'sistema', 'estado', 'pestana', 'tema', 'actualizacion', 'widgets', 'widgetsCfg', 'nuevo-evento', 'notas', 'widget:tema'];
 contextBridge.exposeInMainWorld('api', {
   on: (canal, fn) => { if (CANALES.includes(canal)) ipcRenderer.on(canal, (_, d) => fn(d)); },
   abrirCorreo: id => ipcRenderer.send('abrir-correo', id),
@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('api', {
   widgetDuplicar: () => ipcRenderer.send('widget:duplicar'),
   widgetEstilo: e => ipcRenderer.send('widget:estilo', e),
   widgetCfg: c => ipcRenderer.send('widget:cfg', c),
+  widgetTema: t => ipcRenderer.send('widget:tema', t), // tema de contraste del widget: auto | claro | oscuro | claroscuro | velado | contraste
   widgetCerrar: () => ipcRenderer.send('widget:cerrar'),
   fijar: b => ipcRenderer.send('fijar', !!b),
   actualizar: () => ipcRenderer.send('actualizar'),
