@@ -84,7 +84,8 @@ async function asegurarOutlook() {
   try {
     if (await outlookAbierto()) return;
     log('Outlook cerrado: se abre');
-    spawn('cmd', ['/c', 'start', '/min', '', 'outlook'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+    // cwd = carpeta de usuario: Outlook se queda abierto y heredaría la carpeta de la app como directorio de trabajo, bloqueándola (el instalador no podría borrarla)
+    spawn('cmd', ['/c', 'start', '/min', '', 'outlook'], { detached: true, windowsHide: true, stdio: 'ignore', cwd: require('os').homedir() }).unref();
     for (let i = 0; i < 20 && !(await outlookAbierto()); i++) await new Promise(r => setTimeout(r, 3000)); // hasta 1 min a que aparezca el proceso
     await new Promise(r => setTimeout(r, 8000)); // y unos segundos más hasta que acepta conexiones
   } catch (e) { log('abrir Outlook ' + e.message); }
@@ -584,7 +585,7 @@ ipcMain.handle('uso:datos', (_, desde, hasta) => { // tramos de [desde, hasta] (
 });
 ipcMain.handle('uso:importar', (_, texto) => { const r = CatUso.importar(String(texto || '').slice(0, 2e5), leerCatsUso()); if (r.n) guardarCatsUso(r.cfg); return { n: r.n, errores: r.errores, cfg: leerCatsUso() }; });
 
-ipcMain.on('abrir-outlook', () => { try { spawn('cmd', ['/c', 'start', '', 'outlook'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref(); } catch (e) { log('outlook ' + e.message); } });
+ipcMain.on('abrir-outlook', () => { try { spawn('cmd', ['/c', 'start', '', 'outlook'], { detached: true, windowsHide: true, stdio: 'ignore', cwd: require('os').homedir() }).unref(); } catch (e) { log('outlook ' + e.message); } });
 ipcMain.on('fijar', (_, b) => fijar(b === true));
 ipcMain.on('actualizar', actualizar);
 ipcMain.on('cerrar', cerrar);
