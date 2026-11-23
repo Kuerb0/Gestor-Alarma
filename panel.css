@@ -317,12 +317,12 @@ select.campo option { background: #2b2f38; color: #fff; }
 [data-tema=claro] { --txt: #fff; --sec: rgba(255,255,255,.78); --campo: rgba(0,0,0,0); --ambar: #ffc15a; --rojo: #ff6b5e; color-scheme: dark; }
 [data-tema=oscuro] { --txt: #14161a; --sec: rgba(20,22,26,.72); --campo: rgba(255,255,255,.55); --ambar: #a85f00; --rojo: #c8261a; --ts: rgba(255,255,255,.75); color-scheme: light; }
 [data-tema=claroscuro] { --txt: #fff; --sec: rgba(255,255,255,.94); --campo: rgba(0,0,0,0); --ambar: #ffc15a; --rojo: #ff6b5e; color-scheme: dark;
-  --ts: rgba(0,0,0,.85); --halo: 0 0 2px var(--ts), 0 0 4px var(--ts); --tstroke: rgba(0,0,0,.85); --tsw: 2.6px; /* halo del texto HTML y contorno del texto SVG */
+  --ts: rgba(0,0,0,.85); --halo: 0 0 1px #000, 0 0 2px #000, 0 0 3px rgba(0,0,0,.9), 0 0 7px rgba(0,0,0,.7), 0 0 14px rgba(0,0,0,.55); --tstroke: rgba(0,0,0,.9); --tsw: 3px; /* halo apilado: sobre nubes blancas uno solo se queda corto */ /* halo del texto HTML y contorno del texto SVG */
   --svgf: drop-shadow(0 0 1px rgba(0,0,0,.95)) drop-shadow(0 0 2px rgba(0,0,0,.75)); --svgc: var(--svgf); --glow: none; /* contorno oscuro fino bajo trazos, barras y puntos */
   --pout: 1px solid rgba(0,0,0,.85); --pista: rgba(128,128,128,.5); --pista-w: rgba(128,128,128,.5); --rej: rgba(255,255,255,.55); --campo-n: rgba(14,18,26,.62);
   --cfgfondo: rgba(14,18,26,.86); --barfondo: rgba(14,18,26,.78); --barhover: rgba(14,18,26,.95); --pas: .65; --pasll: .5; --pasw: .7; }
 [data-tema=velado] { --txt: #fff; --sec: rgba(255,255,255,.86); --campo: rgba(0,0,0,0); --ambar: #ffc15a; --rojo: #ff6b5e; color-scheme: dark;
-  --velo: rgba(10,12,16,.55); --ts: rgba(0,0,0,.4); --halo: 0 1px 2px var(--ts); --svgf: none; --pas: .55; --pasll: .4; --pasw: .6; --rej: rgba(255,255,255,.3); --barfondo: rgba(10,12,16,.55); }
+  --velo: rgba(10,12,16,.68); --ts: rgba(0,0,0,.4); --halo: 0 1px 2px var(--ts); --svgf: none; --pas: .55; --pasll: .4; --pasw: .6; --rej: rgba(255,255,255,.3); --barfondo: rgba(10,12,16,.55); }
 [data-tema=contraste] { --txt: #fff; --sec: #fff; --campo: rgba(0,0,0,0); --ambar: #ffd27a; --rojo: #ff8a7e; color-scheme: dark;
   --velo: rgba(0,0,0,.8); --halo: none; --svgf: none; --trazo: color-mix(in srgb, var(--acento) 60%, #fff); --glow: none; --rej: rgba(255,255,255,.8); --ll: 1;
   --pas: .85; --pasll: .75; --pasw: .85; --pista: rgba(255,255,255,.3); --pista-w: rgba(255,255,255,.3); --pout: 1px solid rgba(255,255,255,.8); --barfondo: rgba(0,0,0,.8); }

@@ -6,7 +6,7 @@ const REJILLA = 4; // la imagen se divide en REJILLA × REJILLA celdas
 const PASO_X = 3, PASO_Y = 5;
 const CLARO_MAX = 0.18;    // celda «oscura»: luminancia relativa por debajo de esto. Si TODAS lo están -> tema 'claro' (texto claro sobre fondo oscuro)
 const OSCURO_MIN = 0.55;   // si TODAS las celdas están por encima de esto -> tema 'oscuro' (texto oscuro sobre fondo claro)
-const MEZCLA_CLARA = 0.45; // celda «clara» para detectar el fondo mixto: hay celdas < CLARO_MAX y celdas > MEZCLA_CLARA -> 'claroscuro'
+const MEZCLA_CLARA = 0.30; // celda «clara» (el texto blanco ya no llega a contraste 3:1 encima) para detectar el fondo mixto: hay celdas < CLARO_MAX y celdas > MEZCLA_CLARA -> 'claroscuro'
 const MEZCLA_RANGO = 0.35; // o bien: diferencia entre la celda más clara y la más oscura mayor que esto -> 'claroscuro'
 const DETALLE_MAX = 0.2;   // desviación típica media dentro de las celdas mayor que esto (fondo muy «ruidoso», sin zonas lisas) -> 'velado'
 const MEDIA_CORTE = 0.4;   // en el resto de casos: luminancia media < esto -> 'claro', si no 'oscuro'

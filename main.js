@@ -837,7 +837,7 @@ async function humo() {
       for (const t of ['claro', 'oscuro', 'claroscuro', 'velado', 'contraste']) {
         await js(wt, `api.widgetTema('${t}')`); await js(ws, `api.widgetTema('${t}')`); await esp(250);
         if (await dt(wt) !== t || temaDe('tiempo') !== t || (ajustes.widgets.tiempo || {}).tema !== t) fallos.push('widget: el tema ' + t + ' no se aplica/guarda (' + await dt(wt) + ')');
-        if (t === 'claroscuro' && !(await js(wt, `getComputedStyle(document.querySelector('.fr-t')).strokeWidth`)).startsWith('2.6')) fallos.push('widget: el claroscuro no contornea el texto SVG');
+        if (t === 'claroscuro' && !(await js(wt, `getComputedStyle(document.querySelector('.fr-t')).strokeWidth`)).startsWith('3')) fallos.push('widget: el claroscuro no contornea el texto SVG');
         await captura('widget-tiempo-tema-' + t, wt); await captura('widget-sistema-tema-' + t, ws);
       }
       await js(wt, `api.widgetTema('inventado')`); await esp(100); if (temaDe('tiempo') !== 'contraste') fallos.push('widget: acepta un tema inválido');
