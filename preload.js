@@ -25,7 +25,9 @@ contextBridge.exposeInMainWorld('api', {
   quitarCiudad: k => ipcRenderer.invoke('lugares:quitar', k),
   widget: (tipo, poner, cfg) => ipcRenderer.send('widget:poner', tipo, !!poner, cfg), // widgets del escritorio
   widgetAlto: h => ipcRenderer.send('widget:alto', h),
-  widgetTam: (ancho, alto, fin) => ipcRenderer.send('widget:tam', ancho, alto, fin === true),
+  widgetTam: (ancho, alto, fin, ancla) => ipcRenderer.send('widget:tam', ancho, alto, fin === true, ancla),
+  widgetMover: (dx, dy, fin) => ipcRenderer.send('widget:mover', dx, dy, fin === true),
+  widgetDuplicar: () => ipcRenderer.send('widget:duplicar'),
   widgetEstilo: e => ipcRenderer.send('widget:estilo', e),
   widgetCfg: c => ipcRenderer.send('widget:cfg', c),
   widgetCerrar: () => ipcRenderer.send('widget:cerrar'),

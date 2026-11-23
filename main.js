@@ -7,7 +7,7 @@ const Alarmas = require('./alarmas'); // motor del antiguo Gestor-Alarmas (overl
 const HUMO = process.argv.includes('--humo'); // prueba: userData temporal, datos inventados, captura y salir
 const ICONO = path.join(__dirname, 'assets', 'icon.png');
 const PW = 380; // ancho del panel
-const widgets = new Map(); // widgets del escritorio abiertos: tipo ('tiempo' | 'sistema') -> BrowserWindow
+const widgets = new Map(); // widgets del escritorio abiertos: id -> BrowserWindow (varios por tipo; ver tipoDe)
 let AJUSTES, ajustes = { fijado: false, iniciarConWindows: true, lugar: null }, win, raya, tray, anim = 0, acento = '#4a9eff';
 nativeTheme.themeSource = HUMO && process.env.PANEL_TEMA === 'light' ? 'light' : 'system'; // el CSS sigue prefers-color-scheme
 let diasAgenda = 7, cerradoDesde = 0, extraHumo = [], abierto = false, fuera = 0, ultCorreo = 0, leyendoCorreo = false, tSistema = null, bueno = {}, cache = {};
@@ -125,10 +125,10 @@ async function leerMeteo() {
   finally { leyendoMeteo = false; }
 }
 async function leerSistema() { if (!Sistema) return; try { enviar('sistema', await Sistema.leer()); } catch (e) { log('sistema ' + e.message); } }
-const actualizar = () => { leerCorreo(); leerMeteo(); if (abierto || widgets.has('sistema')) leerSistema(); };
+const actualizar = () => { leerCorreo(); leerMeteo(); if (abierto || abiertosDe('sistema').length) leerSistema(); };
 function vigilarSistema() { // CPU/RAM/disco cada 2 s solo si alguien los está mirando: el panel abierto o el widget de Sistema
   clearInterval(tSistema); tSistema = null;
-  if (abierto || widgets.has('sistema')) { leerSistema(); tSistema = setInterval(leerSistema, 2000); }
+  if (abierto || abiertosDe('sistema').length) { leerSistema(); tSistema = setInterval(leerSistema, 2000); }
 }
 
 // ---- ventana: acrílico nativo (cubre toda la ventana), así que escondida se oculta; la «raya» del borde es otra ventanita aparte
@@ -234,78 +234,112 @@ function vigilarCompleta() {
 }
 app.on('will-quit', () => { try { uso && uso.cerrar(); } catch {} try { vigia && vigia.kill(); } catch {} });
 
-// ---- widgets del escritorio: la gráfica del Tiempo o la de Sistema en su propia ventanita transparente, arrastrable y sin ser «siempre encima»
-// (se queda con las demás ventanas). Posición y «abierto» se guardan en ajustes.widgets y se restauran al arrancar.
+// ---- widgets del escritorio: la gráfica del Tiempo, Sistema, Agenda o Notas en su propia ventanita transparente, arrastrable y sin ser «siempre encima»
+// (se queda con las demás ventanas). Puede haber varios del mismo tipo (también duplicados): cada uno tiene su id y su entrada en ajustes.widgets[id]
+// ({ tipo, cfg, estilo, x, y, ancho, alto, abierto }). El primero de cada tipo usa el propio tipo como id (así siguen valiendo los ajustes de antes).
 const WIDGETS = { tiempo: { ancho: { p: 300, m: 380, g: 520 }, nombre: 'Tiempo' }, sistema: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Sistema' }, agenda: { ancho: { p: 280, m: 340, g: 440 }, nombre: 'Agenda' }, notas: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Notas' } };
 const CFG_BOOL = { tiempo: ['ciu', 'graf', 'ico', 'lluvia', 'tmp', 'res', 'det', 'dias'], sistema: ['cpu', 'ram', 'disco', 'disp', 'bat'], agenda: ['todo', 'lugar'], notas: ['fecha', 'nueva'] }; // qué se puede mostrar/ocultar en cada widget
-function cfgWidget(tipo, c = ajustes.widgets && ajustes.widgets[tipo] && ajustes.widgets[tipo].cfg) { // configuración saneada: tamaño (p/m/g) + interruptores (todos activos por defecto)
+const WMIN = { ancho: 160, alto: 80 }, WMAX = 1400; // límites del tamaño a mano
+const gw = id => (ajustes.widgets && ajustes.widgets[id]) || {};
+const ponGw = (id, v) => { ajustes.widgets = { ...ajustes.widgets, [id]: { ...gw(id), ...v } }; };
+const tipoDe = id => { const t = gw(id).tipo || id; return WIDGETS[t] ? t : null; };
+const abiertosDe = tipo => [...widgets.keys()].filter(id => tipoDe(id) === tipo);
+function cfgWidget(id, c = gw(id).cfg) { // configuración saneada: tamaño (p/m/g) + interruptores (todos activos por defecto)
+  const tipo = tipoDe(id);
   c = c && typeof c === 'object' ? c : {};
   const n = { tam: ['p', 'm', 'g'].includes(c.tam) ? c.tam : 'm' };
   CFG_BOOL[tipo].forEach(k => n[k] = c[k] !== false);
-  if (tipo === 'tiempo') n.ndias = [3, 5, 7].includes(c.ndias) ? c.ndias : 5;
+  if (tipo === 'tiempo') { n.ndias = [3, 5, 7].includes(c.ndias) ? c.ndias : 5; if (typeof c.ciudad === 'string' && c.ciudad) n.ciudad = c.ciudad.slice(0, 120); } // cada widget del Tiempo recuerda su ciudad
   if (tipo === 'agenda') { n.modo = c.modo === 'horas' ? 'horas' : 'eventos'; n.ndias = [1, 3, 7].includes(c.ndias) ? c.ndias : 3; }
   { const d0 = tipo === 'agenda' ? 8 : 0, d1 = tipo === 'agenda' ? 20 : 24; if (tipo === 'tiempo' || tipo === 'agenda') { n.h0 = Number.isInteger(c.h0) ? Math.max(0, Math.min(22, c.h0)) : d0; n.h1 = Math.max(n.h0 + 2, Math.min(24, Number.isInteger(c.h1) ? c.h1 : d1)); } } // rango de horas editable: eje del gráfico del Tiempo / línea de tiempo de la Agenda
   return n;
 }
-// Tamaño a mano (arrastrando la esquina): ancho/alto guardados en ajustes.widgets[tipo]; sin ellos, el ancho sale del tamaño p/m/g y el alto del contenido
-const anchoWidget = tipo => { const g = ajustes.widgets && ajustes.widgets[tipo]; return g && Number.isFinite(g.ancho) ? Math.round(Math.max(200, Math.min(900, g.ancho))) : WIDGETS[tipo].ancho[cfgWidget(tipo).tam]; };
-const altoFijo = tipo => { const g = ajustes.widgets && ajustes.widgets[tipo]; return g && Number.isFinite(g.alto) ? Math.round(Math.max(100, Math.min(1400, g.alto))) : 0; };
-const sinTamanoManual = tipo => { const { ancho, alto, ...resto } = (ajustes.widgets && ajustes.widgets[tipo]) || {}; ajustes.widgets = { ...ajustes.widgets, [tipo]: resto }; };
-const pintarWidgets = () => { enviar('widgets', [...widgets.keys()]); enviar('widgetsCfg', Object.fromEntries([...widgets.keys()].map(t => [t, cfgWidget(t)]))); tray && tray.setContextMenu(menu()); };
-function posicionWidget(tipo) { // la guardada si sigue dentro de alguna pantalla; si no, esquina superior izquierda del monitor principal
-  const g = ajustes.widgets && ajustes.widgets[tipo], a = area(), w = anchoWidget(tipo);
-  if (g && Number.isFinite(g.x) && Number.isFinite(g.y) && screen.getAllDisplays().some(d => { const b = d.workArea; return g.x + 60 > b.x && g.x < b.x + b.width - 60 && g.y >= b.y && g.y < b.y + b.height - 60; })) return { x: Math.round(g.x), y: Math.round(g.y) };
-  return { x: a.x + 40 + (tipo === 'sistema' ? w + 20 : tipo === 'agenda' ? 2 * (w + 20) : tipo === 'notas' ? 3 * (w + 20) : 0), y: a.y + 60 };
+// Tamaño a mano (arrastrando bordes o esquinas): ancho/alto guardados en ajustes.widgets[id]; sin ellos, el ancho sale del tamaño p/m/g y el alto del contenido
+const anchoWidget = id => { const g = gw(id); return Number.isFinite(g.ancho) ? Math.round(Math.max(WMIN.ancho, Math.min(WMAX, g.ancho))) : WIDGETS[tipoDe(id)].ancho[cfgWidget(id).tam]; };
+const altoFijo = id => { const g = gw(id); return Number.isFinite(g.alto) ? Math.round(Math.max(WMIN.alto, Math.min(WMAX, g.alto))) : 0; };
+const sinTamanoManual = id => { const { ancho, alto, ...resto } = gw(id); ajustes.widgets = { ...ajustes.widgets, [id]: resto }; };
+const pintarWidgets = () => { const ids = [...widgets.keys()]; enviar('widgets', ids.map(tipoDe)); enviar('widgetsCfg', ids.map(id => ({ tipo: tipoDe(id), cfg: cfgWidget(id) }))); tray && tray.setContextMenu(menu()); };
+function posicionWidget(id) { // la guardada si sigue dentro de alguna pantalla; si no, arriba a la izquierda del monitor principal (en cascada si ya hay otros del mismo tipo)
+  const g = gw(id), a = area(), tipo = tipoDe(id), w = anchoWidget(id), cascada = abiertosDe(tipo).filter(x => x !== id).length * 30;
+  if (Number.isFinite(g.x) && Number.isFinite(g.y) && screen.getAllDisplays().some(d => { const b = d.workArea; return g.x + 60 > b.x && g.x < b.x + b.width - 60 && g.y >= b.y && g.y < b.y + b.height - 60; })) return { x: Math.round(g.x), y: Math.round(g.y) };
+  return { x: a.x + 40 + Object.keys(WIDGETS).indexOf(tipo) * (w + 20) + cascada, y: a.y + 60 + cascada };
 }
-function guardarWidget(tipo, abiertoW) {
-  const w = widgets.get(tipo), b = w && !w.isDestroyed() ? w.getBounds() : ajustes.widgets && ajustes.widgets[tipo];
-  ajustes.widgets = { ...ajustes.widgets, [tipo]: { ...(ajustes.widgets && ajustes.widgets[tipo]), x: b ? b.x : undefined, y: b ? b.y : undefined, abierto: abiertoW } }; guardarAjustes();
+function guardarWidget(id, abiertoW) {
+  const w = widgets.get(id), b = w && !w.isDestroyed() ? w.getBounds() : gw(id);
+  ponGw(id, { x: b.x, y: b.y, abierto: abiertoW }); guardarAjustes();
 }
-const cargarWidget = (w, tipo) => w.loadFile('widget.html', { query: { tipo, cfg: JSON.stringify(cfgWidget(tipo)), estilo: (ajustes.widgets && ajustes.widgets[tipo] && ajustes.widgets[tipo].estilo) || 'consumo', fijo: altoFijo(tipo) ? '1' : '' } });
-function ponerWidget(tipo, v, c) { // `c` (opcional): configuración que se aplica al abrirlo (galería); si ya está abierto se recarga con ella
-  if (!WIDGETS[tipo]) return;
-  const w0 = widgets.get(tipo);
+const cargarWidget = (w, id) => w.loadFile('widget.html', { query: { tipo: tipoDe(id), cfg: JSON.stringify(cfgWidget(id)), estilo: gw(id).estilo || 'consumo', fijo: altoFijo(id) ? '1' : '' } });
+function ponerWidget(id, v, c) { // abre (v) o quita el widget `id`; `c` (opcional): configuración que se aplica al abrirlo; si ya está abierto se recarga con ella
+  if (!tipoDe(id)) return;
+  const w0 = widgets.get(id);
   if (v && c && typeof c === 'object') {
-    ajustes.widgets = { ...ajustes.widgets, [tipo]: { ...(ajustes.widgets && ajustes.widgets[tipo]), cfg: cfgWidget(tipo, c) } }; guardarAjustes();
-    if (w0 && !w0.isDestroyed()) { const b = w0.getBounds(); w0.setBounds({ x: b.x, y: b.y, width: anchoWidget(tipo), height: b.height }); cargarWidget(w0, tipo); pintarWidgets(); return; }
+    ponGw(id, { cfg: cfgWidget(id, c) }); guardarAjustes();
+    if (w0 && !w0.isDestroyed()) { const b = w0.getBounds(); w0.setBounds({ x: b.x, y: b.y, width: anchoWidget(id), height: b.height }); cargarWidget(w0, id); pintarWidgets(); return; }
   }
-  if (!v) { if (!w0) return; guardarWidget(tipo, false); widgets.delete(tipo); if (!w0.isDestroyed()) w0.destroy(); pintarWidgets(); vigilarSistema(); return; }
+  if (!v) {
+    if (!w0) return; guardarWidget(id, false); widgets.delete(id); if (!w0.isDestroyed()) w0.destroy();
+    if (id !== tipoDe(id)) { const { [id]: _, ...resto } = ajustes.widgets; ajustes.widgets = resto; guardarAjustes(); } // las copias no dejan rastro; el primero de cada tipo recuerda posición y ajustes
+    pintarWidgets(); vigilarSistema(); return;
+  }
   if (w0 && !w0.isDestroyed()) return;
-  const p = HUMO ? { x: -30000, y: -30000 } : posicionWidget(tipo); // en la prueba de humo los widgets nacen fuera de pantalla: no se ven ni mueven los de verdad
-  const w = new BrowserWindow({ ...p, width: anchoWidget(tipo), height: altoFijo(tipo) || 200, frame: false, transparent: true, hasShadow: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, show: false, icon: ICONO,
+  const p = HUMO ? { x: -30000, y: -30000 } : posicionWidget(id); // en la prueba de humo los widgets nacen fuera de pantalla: no se ven ni mueven los de verdad
+  const w = new BrowserWindow({ ...p, width: anchoWidget(id), height: altoFijo(id) || 200, frame: false, transparent: true, hasShadow: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, show: false, icon: ICONO,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false } });
-  widgets.set(tipo, w);
-  cargarWidget(w, tipo);
+  widgets.set(id, w);
+  cargarWidget(w, id);
   w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema', 'correo', 'notas'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); });
   w.once('ready-to-show', () => { if (!completa) w.showInactive(); });
-  w.on('moved', () => { if (widgets.get(tipo) === w) guardarWidget(tipo, true); });
-  w.on('closed', () => { if (widgets.get(tipo) === w) { widgets.delete(tipo); pintarWidgets(); } });
-  guardarWidget(tipo, true); pintarWidgets(); vigilarSistema();
+  w.on('moved', () => { if (widgets.get(id) === w) guardarWidget(id, true); });
+  w.on('closed', () => { if (widgets.get(id) === w) { widgets.delete(id); pintarWidgets(); } });
+  guardarWidget(id, true); pintarWidgets(); vigilarSistema();
 }
-const tipoWidget = wc => [...widgets].find(([, w]) => !w.isDestroyed() && w.webContents === wc)?.[0];
-ipcMain.on('widget:poner', (_, tipo, v, c) => ponerWidget(tipo, v === true, c));
-ipcMain.on('widget:estilo', (e, est) => { const t = tipoWidget(e.sender); if (!t || !['consumo', 'cristal', 'fino', 'flotante', 'solido'].includes(est)) return; ajustes.widgets = { ...ajustes.widgets, [t]: { ...(ajustes.widgets && ajustes.widgets[t]), estilo: est } }; guardarAjustes(); });
+function nuevoWidget(tipo, c, desde) { // añade otro widget de `tipo`; `desde`: id del que se duplica (copia ajustes, estilo y tamaño, y sale desplazado)
+  if (!WIDGETS[tipo]) return;
+  const id = !widgets.has(tipo) ? tipo : tipo + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  if (id !== tipo) ajustes.widgets = { ...ajustes.widgets, [id]: { tipo } };
+  if (desde && widgets.has(desde)) { const o = gw(desde), b = widgets.get(desde).getBounds(); ponGw(id, { cfg: o.cfg, estilo: o.estilo, ancho: o.ancho, alto: o.alto, x: b.x + 28, y: b.y + 28 }); }
+  ponerWidget(id, true, c);
+  return id;
+}
+const idWidget = wc => [...widgets].find(([, w]) => !w.isDestroyed() && w.webContents === wc)?.[0];
+ipcMain.on('widget:poner', (_, tipo, v, c) => v === true ? nuevoWidget(tipo, c) : abiertosDe(tipo).forEach(id => ponerWidget(id, false))); // desde el panel: añadir otro / quitar los de ese tipo
+ipcMain.on('widget:duplicar', e => { const id = idWidget(e.sender); if (id) nuevoWidget(tipoDe(id), undefined, id); });
+ipcMain.on('widget:estilo', (e, est) => { const id = idWidget(e.sender); if (!id || !['consumo', 'cristal', 'fino', 'flotante', 'solido'].includes(est)) return; ponGw(id, { estilo: est }); guardarAjustes(); });
 ipcMain.on('widget:cfg', (e, c) => {
-  const t = tipoWidget(e.sender); if (!t || !c || typeof c !== 'object') return;
-  const tamAntes = cfgWidget(t).tam;
-  ajustes.widgets = { ...ajustes.widgets, [t]: { ...(ajustes.widgets && ajustes.widgets[t]), cfg: cfgWidget(t, c) } };
-  if (cfgWidget(t).tam !== tamAntes) sinTamanoManual(t); // elegir Pequeño/Mediano/Grande vuelve al tamaño automático
+  const id = idWidget(e.sender); if (!id || !c || typeof c !== 'object') return;
+  const tamAntes = cfgWidget(id).tam;
+  ponGw(id, { cfg: cfgWidget(id, c) });
+  if (cfgWidget(id).tam !== tamAntes) sinTamanoManual(id); // elegir Pequeño/Mediano/Grande vuelve al tamaño automático
   guardarAjustes();
-  const w = widgets.get(t), b = w.getBounds(); w.setBounds({ x: b.x, y: b.y, width: anchoWidget(t), height: b.height }); pintarWidgets();
+  const w = widgets.get(id), b = w.getBounds(); w.setBounds({ x: b.x, y: b.y, width: anchoWidget(id), height: b.height }); pintarWidgets();
 });
-ipcMain.on('widget:tam', (e, ancho, alto, fin) => { // arrastre de la esquina (fin = soltó: se guarda); ancho null = doble clic: vuelve al tamaño automático
-  const t = tipoWidget(e.sender); if (!t) return;
-  const w = widgets.get(t), b = w.getBounds();
-  if (ancho === null) { sinTamanoManual(t); guardarAjustes(); w.setBounds({ x: b.x, y: b.y, width: anchoWidget(t), height: b.height }); return; }
+// Tamaño a mano. Con `ancla` (arrastre de un borde o esquina: 'n','s','e','w' y combinaciones) llegan dx/dy en px desde que se pulsó, y se aplican a los límites
+// que tenía la ventana entonces: con 'w'/'n' el borde contrario se queda quieto (con el escalado de pantalla, innerWidth no coincide con getBounds: no se usa).
+// Sin `ancla`: ancho y alto directos. ancho null = doble clic: vuelve al tamaño automático. fin = soltó: se guarda.
+const anclas = new Map(); // id -> límites de la ventana al empezar a arrastrar
+ipcMain.on('widget:tam', (e, ancho, alto, fin, ancla) => {
+  const id = idWidget(e.sender); if (!id) return;
+  const w = widgets.get(id), b = w.getBounds();
+  if (ancho === null) { sinTamanoManual(id); guardarAjustes(); w.setBounds({ x: b.x, y: b.y, width: anchoWidget(id), height: b.height }); return; }
   if (!Number.isFinite(ancho) || !Number.isFinite(alto)) return;
-  const a = screen.getDisplayMatching(b).workArea, W = Math.round(Math.max(200, Math.min(900, a.width, ancho))), H = Math.round(Math.max(100, Math.min(1400, a.height, alto)));
-  w.setBounds({ x: b.x, y: b.y, width: W, height: H });
-  if (fin === true) { ajustes.widgets = { ...ajustes.widgets, [t]: { ...(ajustes.widgets && ajustes.widgets[t]), ancho: W, alto: H } }; guardarAjustes(); }
+  const an = typeof ancla === 'string' ? ancla : '', o = an ? anclas.get(id) || anclas.set(id, b).get(id) : b;
+  if (an) { ancho = o.width + (an.includes('e') ? ancho : an.includes('w') ? -ancho : 0); alto = o.height + (an.includes('s') ? alto : an.includes('n') ? -alto : 0); }
+  const a = screen.getDisplayMatching(b).workArea, W = Math.round(Math.max(WMIN.ancho, Math.min(WMAX, a.width, ancho))), H = Math.round(Math.max(WMIN.alto, Math.min(WMAX, a.height, alto)));
+  const x = an.includes('w') ? o.x + o.width - W : o.x, y = an.includes('n') ? o.y + o.height - H : o.y;
+  w.setBounds({ x, y, width: W, height: H });
+  if (fin === true) { anclas.delete(id); ponGw(id, { ancho: W, alto: H, x, y }); guardarAjustes(); }
 });
-ipcMain.on('widget:cerrar', e => { const t = tipoWidget(e.sender); if (t) ponerWidget(t, false); });
+const origenMov = new Map(); // id -> posición al empezar a mover (dx/dy llegan desde ahí)
+ipcMain.on('widget:mover', (e, dx, dy, fin) => {
+  const id = idWidget(e.sender); if (!id || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
+  const w = widgets.get(id); if (!origenMov.has(id)) origenMov.set(id, w.getBounds());
+  const o = origenMov.get(id); w.setBounds({ ...o, x: Math.round(o.x + dx), y: Math.round(o.y + dy) }); // setPosition agranda la ventana con el escalado de pantalla
+  if (fin === true) { origenMov.delete(id); guardarWidget(id, true); }
+});
+ipcMain.on('widget:cerrar', e => { const id = idWidget(e.sender); if (id) ponerWidget(id, false); });
 ipcMain.on('widget:alto', (e, h) => { // el widget mide su contenido; la ventana se ajusta (80–900 px)
-  const t = tipoWidget(e.sender); if (!t || !Number.isFinite(h) || altoFijo(t)) return; // con alto a mano, no se ajusta al contenido
-  const w = widgets.get(t), b = w.getBounds(); w.setBounds({ x: b.x, y: b.y, width: anchoWidget(t), height: Math.round(Math.min(900, Math.max(80, h))) });
+  const id = idWidget(e.sender); if (!id || !Number.isFinite(h) || altoFijo(id)) return; // con alto a mano, no se ajusta al contenido
+  const w = widgets.get(id), b = w.getBounds(); w.setBounds({ x: b.x, y: b.y, width: anchoWidget(id), height: Math.round(Math.min(900, Math.max(80, h))) });
 });
 
 // ---- actualización: pastilla en el panel y entradas en la bandeja; en pantalla completa no se enseña nada nuevo
@@ -370,7 +404,8 @@ const menu = () => Menu.buildFromTemplate([
     { label: 'Pausar hasta reanudar', click: () => pausarUso(Infinity) },
     ...(uso && uso.pausado() ? [{ type: 'separator' }, { label: 'Reanudar', click: () => pausarUso(0) }] : []),
   ] },
-  { label: 'Widgets en el escritorio', submenu: Object.entries(WIDGETS).map(([t, w]) => ({ label: w.nombre, type: 'checkbox', checked: widgets.has(t), click: i => ponerWidget(t, i.checked) })) },
+  { label: 'Widgets en el escritorio', submenu: [...Object.entries(WIDGETS).map(([t, w]) => { const n = abiertosDe(t).length; return { label: 'Añadir ' + w.nombre + (n ? ` (${n} en el escritorio)` : ''), click: () => nuevoWidget(t) }; }),
+    { type: 'separator' }, { label: 'Quitar todos', enabled: widgets.size > 0, click: () => [...widgets.keys()].forEach(id => ponerWidget(id, false)) }] },
   { label: 'Iniciar con Windows', type: 'checkbox', checked: !!ajustes.iniciarConWindows, click: i => { ajustes.iniciarConWindows = i.checked; guardarAjustes(); aplicarInicio(); } },
   { label: 'Salir', click: () => app.quit() },
 ]);
@@ -534,7 +569,7 @@ app.whenReady().then(async () => {
   cache.notas = leerNotas(); // para que los widgets de Notas la tengan al abrirse
   if (HUMO) return humo().catch(e => { console.log('HUMO FALLA\nexcepción: ' + (e && e.stack || e)); app.exit(1); }); // si la prueba lanza, sale en vez de quedarse colgada
   vigilarCompleta();
-  Object.keys(WIDGETS).forEach(t => ajustes.widgets && ajustes.widgets[t] && ajustes.widgets[t].abierto && ponerWidget(t, true));
+  Object.keys(ajustes.widgets || {}).forEach(id => gw(id).abierto && ponerWidget(id, true));
   estado(); if (ajustes.fijado) abrir();
   cargarCacheCorreo(); asegurarOutlook(); // primero lo guardado, luego se abre Outlook si hace falta (esa función ya hace la primera lectura al terminar)
   actualizar();
@@ -708,6 +743,20 @@ async function humo() {
     if (Math.abs(wt.getBounds().width - 470) > 2 || Math.abs(wt.getBounds().height - 420) > 2 || ajustes.widgets.tiempo.ancho !== 470 || ajustes.widgets.tiempo.alto !== 420) fallos.push('widget Tiempo: el tamaño a mano no se aplica/guarda (' + wt.getBounds().width + '×' + wt.getBounds().height + ')');
     await js(wt, `document.getElementById('w-r').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`); await esp(500);
     if (ajustes.widgets.tiempo.ancho !== undefined || ajustes.widgets.tiempo.alto !== undefined || Math.abs(wt.getBounds().width - 380) > 2 || wt.getBounds().height === 420) fallos.push('widget Tiempo: el doble clic en la esquina no vuelve al tamaño automático (' + wt.getBounds().width + '×' + wt.getBounds().height + ')');
+    // tirar del borde izquierdo/superior: cambia el tamaño y el borde contrario (derecho/inferior) se queda quieto
+    { wt.setPosition(-20000, -20000); await esp(100); const b0 = wt.getBounds(); await js(wt, `api.widgetTam(-60, -40, true, 'nw')`); await esp(250); const b1 = wt.getBounds();
+      if (Math.abs(b1.x + b1.width - b0.x - b0.width) > 2 || Math.abs(b1.y + b1.height - b0.y - b0.height) > 2 || Math.abs(b1.width - b0.width - 60) > 2) fallos.push('widget: el borde de arriba a la izquierda no ancla el contrario ' + JSON.stringify([b0, b1]));
+      await js(wt, `api.widgetTam(10, 10, true)`); await esp(250); if (Math.abs(wt.getBounds().width - 160) > 2 || Math.abs(wt.getBounds().height - 80) > 2) fallos.push('widget: el tamaño mínimo no es 160×80 (' + wt.getBounds().width + '×' + wt.getBounds().height + ')');
+      await js(wt, `document.getElementById('w-r').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`); await esp(400); }
+    // varios del mismo tipo: duplicar crea otro con los mismos ajustes; la galería añade otro más; quitar una copia no toca al original
+    await js(wt, `document.getElementById('w-d').click()`); await esp(900);
+    { const copias = abiertosDe('tiempo').filter(id => id !== 'tiempo');
+      if (copias.length !== 1 || JSON.stringify(cfgWidget(copias[0])) !== JSON.stringify(cfgWidget('tiempo'))) fallos.push('widget: duplicar no crea una copia igual (' + copias.length + ')');
+      else if (await n(widgets.get(copias[0]), '.fr-g') !== 1) fallos.push('widget duplicado: sin gráfico');
+      nuevoWidget('tiempo', { tam: 'p' }); await esp(900);
+      if (abiertosDe('tiempo').length !== 3) fallos.push('widget: no se pueden tener 3 del mismo tipo');
+      abiertosDe('tiempo').filter(id => id !== 'tiempo').forEach(id => ponerWidget(id, false)); await esp(200);
+      if (abiertosDe('tiempo').length !== 1 || !widgets.has('tiempo') || Object.keys(ajustes.widgets).some(id => id.startsWith('tiempo-'))) fallos.push('widget: quitar las copias deja rastro o quita el original'); }
     await js(wt, `document.querySelector('.fr-b[data-d="1"]').click()`); await esp(150);
     if (await n(wt, '.fr-hoy') !== 1) fallos.push('widget Tiempo: las flechas de día no funcionan');
     // configuración: tamaño grande (más ancho) y ocultar partes

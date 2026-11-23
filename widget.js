@@ -23,6 +23,7 @@ const NIVELES = tipo === 'notas' ? { Mínimo: { fecha: 0, nueva: 0 }, Normal: { 
   ? { Mínimo: { ciu: 0, graf: 1, ico: 0, lluvia: 0, tmp: 0, res: 0, det: 0, dias: 0 }, Normal: { ciu: 1, graf: 1, ico: 1, lluvia: 1, tmp: 1, res: 1, det: 0, dias: 1 }, Completo: { ciu: 1, graf: 1, ico: 1, lluvia: 1, tmp: 1, res: 1, det: 1, dias: 1 } }
   : { Mínimo: { cpu: 1, ram: 1, disco: 0, disp: 0, bat: 0 }, Normal: { cpu: 1, ram: 1, disco: 1, disp: 0, bat: 1 }, Completo: { cpu: 1, ram: 1, disco: 1, disp: 1, bat: 1 } };
 let cfg = { tam: 'm', ndias: tipo === 'agenda' ? 3 : 5, modo: 'eventos', h0: tipo === 'agenda' ? 8 : 0, h1: tipo === 'agenda' ? 20 : 24 }; try { cfg = { ...cfg, ...JSON.parse(new URLSearchParams(location.search).get('cfg')) }; } catch {}
+if (cfg.ciudad) ciudadSel = cfg.ciudad; // cada widget del Tiempo guarda su ciudad (dos widgets pueden enseñar ciudades distintas)
 const guardaCfg = () => { api.widgetCfg(cfg); pinta(); pintaCfg(); };
 function pintaCfg() {
   const tam = [['p', 'Pequeño'], ['m', 'Mediano'], ['g', 'Grande']].map(([k, n]) => `<button class="cfg-b" data-tam="${k}" aria-pressed="${cfg.tam === k}">${n}</button>`).join('');
@@ -51,19 +52,22 @@ $('w-cfg').addEventListener('change', e => { // desplegables «Desde» / «Hasta
   const hh = e.target.dataset.hh;
   if (hh) { const v = +e.target.value; if (hh === 'h0') { cfg.h0 = v; cfg.h1 = Math.max(cfg.h1, v + 2); } else { cfg.h1 = v; cfg.h0 = Math.min(cfg.h0, v - 2); } guardaCfg(); return; }
   const k = e.target.dataset.k; if (!k) return; cfg[k] = e.target.checked; guardaCfg(); });
-// esquina para cambiar el tamaño a mano: arrastrar fija ancho y alto; doble clic vuelve al automático (el alto se ajusta otra vez al contenido)
+// tamaño a mano: cualquier borde o esquina (franjas en el margen) y la esquina visible de abajo a la derecha. Arrastrar fija ancho y alto;
+// desde arriba o la izquierda el borde contrario se queda quieto. Doble clic: vuelve al automático (el alto se ajusta otra vez al contenido)
 if (new URLSearchParams(location.search).get('fijo')) $('w').classList.add('fijo');
-{
-  const g = $('w-r');
+['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'].forEach(d => { const h = document.createElement('div'); h.className = 'w-h'; h.dataset.d = d; h.title = 'Arrastra para cambiar el tamaño · doble clic: tamaño automático'; document.body.append(h); });
+document.querySelectorAll('[data-d]').forEach(g => {
   g.addEventListener('pointerdown', e => {
-    e.preventDefault(); g.setPointerCapture(e.pointerId);
-    const x0 = e.screenX, y0 = e.screenY, w0 = innerWidth, h0 = innerHeight; let movido = false, raf = 0, w = w0, h = h0;
-    const mueve = ev => { w = w0 + ev.screenX - x0; h = h0 + ev.screenY - y0; if (!movido) { movido = true; $('w').classList.add('fijo'); } if (!raf) raf = requestAnimationFrame(() => { raf = 0; api.widgetTam(w, h, false); }); };
-    const fin = ev => { g.removeEventListener('pointermove', mueve); g.removeEventListener('pointerup', fin); g.removeEventListener('pointercancel', fin); if (movido) api.widgetTam(w0 + ev.screenX - x0, h0 + ev.screenY - y0, true); };
-    g.addEventListener('pointermove', mueve); g.addEventListener('pointerup', fin); g.addEventListener('pointercancel', fin);
+    if (e.button !== 0) return;
+    e.preventDefault(); g.setPointerCapture(e.pointerId); g.classList.add('activo');
+    const d = g.dataset.d, x0 = e.screenX, y0 = e.screenY; let movido = false, raf = 0, dx = 0, dy = 0; // se manda cuánto se ha movido el ratón; el proceso principal lo aplica a los límites de la ventana
+    const calc = ev => { dx = ev.screenX - x0; dy = ev.screenY - y0; };
+    const mueve = ev => { calc(ev); if (!movido) { movido = true; $('w').classList.add('fijo'); } if (!raf) raf = requestAnimationFrame(() => { raf = 0; api.widgetTam(dx, dy, false, d); }); };
+    const fin = ev => { g.removeEventListener('pointermove', mueve); g.removeEventListener('pointerup', fin); g.removeEventListener('pointercancel', fin); g.removeEventListener('lostpointercapture', fin); g.classList.remove('activo'); cancelAnimationFrame(raf); if (movido) { calc(ev); api.widgetTam(dx, dy, true, d); } };
+    g.addEventListener('pointermove', mueve); g.addEventListener('pointerup', fin); g.addEventListener('pointercancel', fin); g.addEventListener('lostpointercapture', fin); // si Windows quita la captura, el arrastre termina igual
   });
   g.addEventListener('dblclick', () => { $('w').classList.remove('fijo'); api.widgetTam(null); });
-}
+});
 let alto = 0;
 new ResizeObserver(() => { if ($('w').classList.contains('fijo')) return; const h = Math.ceil($('w').getBoundingClientRect().height) + 20; if (h !== alto) { alto = h; api.widgetAlto(h); } }).observe($('w'));
 const ESTILOS = ['consumo', 'cristal', 'fino', 'flotante', 'solido'];
@@ -76,11 +80,21 @@ $('w-c').addEventListener('keydown', e => { // Intro guarda la nota nueva; Mayú
   if (e.target.id !== 'wn-texto' || e.key !== 'Enter' || e.shiftKey) return;
   e.preventDefault(); const v = e.target.value.trim(); if (!v) return; e.target.value = ''; api.notasAnadir(v);
 });
+// mover: arrastrando cualquier parte del cuadro que no sea un control (a mano, no con -webkit-app-region: así los botones reciben los clics en Windows)
+$('w').addEventListener('pointerdown', e => {
+  if (e.button !== 0 || e.target.closest('button, input, textarea, select, label, a, [data-d], .ciu-n')) return;
+  const w = $('w'), x0 = e.screenX, y0 = e.screenY; let raf = 0, dx = 0, dy = 0, movido = false;
+  w.setPointerCapture(e.pointerId);
+  const mueve = ev => { dx = ev.screenX - x0; dy = ev.screenY - y0; if (!movido && Math.abs(dx) + Math.abs(dy) < 3) return; movido = true; w.classList.add('moviendo'); if (!raf) raf = requestAnimationFrame(() => { raf = 0; api.widgetMover(dx, dy, false); }); };
+  const fin = () => { ['pointermove', 'pointerup', 'pointercancel', 'lostpointercapture'].forEach((t, i) => w.removeEventListener(t, i ? fin : mueve)); cancelAnimationFrame(raf); w.classList.remove('moviendo'); if (movido) api.widgetMover(dx, dy, true); };
+  w.addEventListener('pointermove', mueve); ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => w.addEventListener(t, fin));
+});
 $('w-x').onclick = () => api.widgetCerrar();
+$('w-d').onclick = () => api.widgetDuplicar();
 $('w-c').addEventListener('click', e => {
   const b = e.target.closest('.fr-b'), c = e.target.closest('.ciu-n');
   if (b && !b.disabled) { diaSel += +b.dataset.d; pinta(); }
-  else if (c) { ciudadSel = c.dataset.c; try { localStorage.setItem('wciudad', ciudadSel); } catch {} pinta(); }
+  else if (c) { ciudadSel = c.dataset.c; try { localStorage.setItem('wciudad', ciudadSel); } catch {} cfg.ciudad = ciudadSel; api.widgetCfg(cfg); pinta(); }
 });
 api.on('tema', t => t && /^#[0-9a-f]{6}$/i.test(t.acento) && document.documentElement.style.setProperty('--acento', t.acento));
 if (tipo === 'tiempo') { api.on('meteo', r => { meteo = r; meteoT = Date.now(); pinta(); }); setInterval(pinta, 6e4); } // la rayita de ahora avanza sola
