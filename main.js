@@ -1,7 +1,8 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences, Notification, clipboard, desktopCapturer } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, shell, nativeTheme, systemPreferences, Notification, clipboard, desktopCapturer, powerMonitor } = require('electron');
 const fs = require('fs'), path = require('path'), { spawn, execFile } = require('child_process');
 const Act = require('./actualizar'); // versiones nuevas en GitHub Releases
 const Salida = require('./outlook_salida'), limpiar = c => c && Array.isArray(c.agenda) ? { ...c, agenda: Salida.sinCopiasAlarma(c.agenda) } : c; // sin las copias «Alarma» que el Gestor exportó
+const PosW = require('./posicion_widgets'); // posición/tamaño guardados de los widgets: la función pura que decide a dónde devolverlos
 const TemaFondo = require('./tema_fondo'); // tema de contraste automático de los widgets (mide el fondo del escritorio)
 const Alarmas = require('./alarmas'); // motor del antiguo Gestor-Alarmas (overlay, datos, Post-It/Outlook)
 
@@ -217,7 +218,8 @@ function aplicarCompleta() {
   if (completa && abierto && !ajustes.fijado) poner(false);
   if (raya && !raya.isDestroyed()) completa || abierto ? raya.hide() : raya.showInactive();
   verFichas();
-  widgets.forEach(w => !w.isDestroyed() && (completa ? w.hide() : w.showInactive())); if (!completa) medirTodos(); // al salir de pantalla completa, se vuelve a medir el fondo if (!completa) medirTodos(); // al salir de pantalla completa, se vuelve a medir el fondo
+  widgets.forEach(w => !w.isDestroyed() && (completa ? w.hide() : w.showInactive())); // al salir de pantalla completa se vuelve a medir el fondo y se devuelven a su sitio (los juegos cambian la resolución)
+  if (!completa) { medirTodos(); programarRecolocar(); }
   pintarAct();
 }
 function vigilarCompleta() {
@@ -269,14 +271,28 @@ const anchoWidget = id => { const g = gw(id); return Number.isFinite(g.ancho) ? 
 const altoFijo = id => { const g = gw(id); return Number.isFinite(g.alto) ? Math.round(Math.max(WMIN.alto, Math.min(WMAX, g.alto))) : 0; };
 const sinTamanoManual = id => { const { ancho, alto, ...resto } = gw(id); ajustes.widgets = { ...ajustes.widgets, [id]: resto }; };
 const pintarWidgets = () => { const ids = [...widgets.keys()]; enviar('widgets', ids.map(tipoDe)); enviar('widgetsCfg', ids.map(id => ({ tipo: tipoDe(id), cfg: cfgWidget(id), tema: efectivoDe(id) }))); tray && tray.setContextMenu(menu()); };
+const areasPantallas = () => screen.getAllDisplays().map(d => d.workArea);
 function posicionWidget(id) { // la guardada si sigue dentro de alguna pantalla; si no, arriba a la izquierda del monitor principal (en cascada si ya hay otros del mismo tipo)
   const g = gw(id), a = area(), tipo = tipoDe(id), w = anchoWidget(id), cascada = abiertosDe(tipo).filter(x => x !== id).length * 30;
-  if (Number.isFinite(g.x) && Number.isFinite(g.y) && screen.getAllDisplays().some(d => { const b = d.workArea; return g.x + 60 > b.x && g.x < b.x + b.width - 60 && g.y >= b.y && g.y < b.y + b.height - 60; })) return { x: Math.round(g.x), y: Math.round(g.y) };
+  if (PosW.posicionValida(g, areasPantallas())) return { x: Math.round(g.x), y: Math.round(g.y) };
   return { x: a.x + 40 + Object.keys(WIDGETS).indexOf(tipo) * (w + 20) + cascada, y: a.y + 60 + cascada };
 }
-function guardarWidget(id, abiertoW) {
-  const w = widgets.get(id), b = w && !w.isDestroyed() ? w.getBounds() : gw(id);
-  ponGw(id, { x: b.x, y: b.y, abierto: abiertoW }); guardarAjustes();
+// Lo guardado manda: la posición solo se guarda cuando el usuario suelta el widget (widget:mover / widget:tam con fin) o al duplicar; abrir y cerrar solo tocan «abierto».
+function guardarPosWidget(id) { const w = widgets.get(id); if (!w || w.isDestroyed()) return; const b = w.getBounds(); ponGw(id, { x: b.x, y: b.y }); guardarAjustes(); }
+// Devuelve cada widget vivo a su posición y tamaño guardados (Windows los mueve/reescala al cambiar pantallas, resolución o al despertar). No toca ajustes.
+function recolocarWidgets(forzar) {
+  if (HUMO && !forzar) return;
+  const areas = areasPantallas();
+  widgets.forEach((w, id) => {
+    if (w.isDestroyed() || origenMov.has(id) || anclas.has(id)) return; // no mientras el usuario lo arrastra o redimensiona
+    const g = gw(id), d = PosW.destinoWidget({ x: g.x, y: g.y, ancho: anchoWidget(id), alto: altoFijo(id) || undefined }, w.getBounds(), areas, anchoWidget(id));
+    if (d) { log('widget «' + id + '» recolocado: ' + JSON.stringify(w.getBounds()) + ' -> ' + JSON.stringify(d)); w.setBounds(d); medirLuego(id); }
+  });
+}
+let recolocarT1 = null, recolocarT2 = null;
+function programarRecolocar() { // tras un cambio de pantallas o de sesión: Windows tarda en asentarse, así que a los ~1,5 s y otra vez a los ~5 s
+  clearTimeout(recolocarT1); clearTimeout(recolocarT2);
+  recolocarT1 = setTimeout(recolocarWidgets, 1500); recolocarT2 = setTimeout(recolocarWidgets, 5000);
 }
 const cargarWidget = (w, id) => w.loadFile('widget.html', { query: { tipo: tipoDe(id), cfg: JSON.stringify(cfgWidget(id)), estilo: gw(id).estilo || 'consumo', tema: temaDe(id), ef: efectivoDe(id), fijo: altoFijo(id) ? '1' : '' } });
 function ponerWidget(id, v, c) { // abre (v) o quita el widget `id`; `c` (opcional): configuración que se aplica al abrirlo; si ya está abierto se recarga con ella
@@ -287,7 +303,7 @@ function ponerWidget(id, v, c) { // abre (v) o quita el widget `id`; `c` (opcion
     if (w0 && !w0.isDestroyed()) { const b = w0.getBounds(); w0.setBounds({ x: b.x, y: b.y, width: anchoWidget(id), height: b.height }); cargarWidget(w0, id); pintarWidgets(); return; }
   }
   if (!v) {
-    if (!w0) return; guardarWidget(id, false); widgets.delete(id); if (!w0.isDestroyed()) w0.destroy();
+    if (!w0) return; ponGw(id, { abierto: false }); guardarAjustes(); widgets.delete(id); if (!w0.isDestroyed()) w0.destroy();
     if (id !== tipoDe(id)) { const { [id]: _, ...resto } = ajustes.widgets; ajustes.widgets = resto; guardarAjustes(); } // las copias no dejan rastro; el primero de cada tipo recuerda posición y ajustes
     clearTimeout(medirT.get(id)); medirT.delete(id); temaEf.delete(id);
     pintarWidgets(); vigilarSistema(); return;
@@ -300,10 +316,12 @@ function ponerWidget(id, v, c) { // abre (v) o quita el widget `id`; `c` (opcion
   cargarWidget(w, id);
   w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema', 'correo', 'notas'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); enviarTemaW(id); medirLuego(id, 900); });
   w.once('ready-to-show', () => { if (!completa) w.showInactive(); });
-  w.on('moved', () => { if (widgets.get(id) === w) { guardarWidget(id, true); medirLuego(id); } });
+  w.on('moved', () => { if (widgets.get(id) === w) medirLuego(id); }); // no se guarda: puede haberla movido Windows; el arrastre del usuario se guarda en widget:mover
   w.on('resized', () => { if (widgets.get(id) === w) medirLuego(id); });
   w.on('closed', () => { if (widgets.get(id) === w) { widgets.delete(id); pintarWidgets(); } });
-  guardarWidget(id, true); pintarWidgets(); vigilarSistema();
+  const g = gw(id); // al abrir solo se marca «abierto»; la posición solo si no había ninguna guardada (una guardada no válida no se pisa: recolocar la llevará a su sitio)
+  ponGw(id, Number.isFinite(g.x) && Number.isFinite(g.y) || HUMO ? { abierto: true } : { abierto: true, x: p.x, y: p.y }); guardarAjustes();
+  pintarWidgets(); vigilarSistema();
 }
 function nuevoWidget(tipo, c, desde) { // añade otro widget de `tipo`; `desde`: id del que se duplica (copia ajustes, estilo y tamaño, y sale desplazado)
   if (!WIDGETS[tipo]) return;
@@ -351,7 +369,7 @@ ipcMain.on('widget:mover', (e, dx, dy, fin) => {
   const id = idWidget(e.sender); if (!id || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const w = widgets.get(id); if (!origenMov.has(id)) origenMov.set(id, w.getBounds());
   const o = origenMov.get(id); w.setBounds({ ...o, x: Math.round(o.x + dx), y: Math.round(o.y + dy) }); // setPosition agranda la ventana con el escalado de pantalla
-  if (fin === true) { origenMov.delete(id); guardarWidget(id, true); medirLuego(id); }
+  if (fin === true) { origenMov.delete(id); guardarPosWidget(id); medirLuego(id); }
 });
 ipcMain.on('widget:cerrar', e => { const id = idWidget(e.sender); if (id) ponerWidget(id, false); });
 ipcMain.on('widget:alto', (e, h) => { // el widget mide su contenido; la ventana se ajusta (80–900 px)
@@ -617,6 +635,9 @@ app.whenReady().then(async () => {
   if (!globalShortcut.register('CommandOrControl+Alt+H', () => ocultarFichas())) log('no se pudo registrar Ctrl+Alt+H');
   setInterval(vigilarFichas, 1000);
   screen.on('display-metrics-changed', colocar);
+  ['display-added', 'display-removed', 'display-metrics-changed'].forEach(ev => screen.on(ev, programarRecolocar));
+  powerMonitor.on('resume', programarRecolocar); powerMonitor.on('unlock-screen', programarRecolocar);
+  setInterval(recolocarWidgets, 30000);
   setInterval(sondear, 80);
   cache.notas = leerNotas(); // para que los widgets de Notas la tengan al abrirse
   if (HUMO) return humo().catch(e => { console.log('HUMO FALLA\nexcepción: ' + (e && e.stack || e)); app.exit(1); }); // si la prueba lanza, sale en vez de quedarse colgada
@@ -860,6 +881,15 @@ async function humo() {
       await js(wt, `document.getElementById('w-g').click()`); }
     await js(wt, `document.getElementById('w-x').click()`); await esp(300);
     if (widgets.has('tiempo')) fallos.push('widget Tiempo: la × no lo quita');
+    { // «como Windows»: la ventana de Sistema se mueve y reescala ×1,2 sin que el usuario haga nada -> recolocarWidgets la devuelve y ajustes no cambia
+      const a = screen.getPrimaryDisplay().workArea; ponGw('sistema', { x: a.x + 100, y: a.y + 100 });
+      const bw = ws.getBounds(), antes = JSON.stringify(ajustes.widgets.sistema);
+      ws.setBounds({ x: a.x + 500, y: a.y + 400, width: Math.round(bw.width * 1.2), height: Math.round(bw.height * 1.2) }); await esp(150);
+      recolocarWidgets(true); await esp(150);
+      const b2 = ws.getBounds();
+      if (Math.abs(b2.x - (a.x + 100)) > 2 || Math.abs(b2.y - (a.y + 100)) > 2 || Math.abs(b2.width - anchoWidget('sistema')) > 2) fallos.push('widget: recolocarWidgets no devuelve la ventana a lo guardado ' + JSON.stringify(b2));
+      if (JSON.stringify(ajustes.widgets.sistema) !== antes) fallos.push('widget: recolocarWidgets cambió ajustes');
+      delete ajustes.widgets.sistema.x; delete ajustes.widgets.sistema.y; }
     ponerWidget('sistema', false); await esp(200);
     // widget Agenda: modo eventos (lista) y modo horas (línea de tiempo) con datos inventados
     {
