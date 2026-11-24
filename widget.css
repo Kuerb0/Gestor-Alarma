@@ -71,4 +71,4 @@ body { padding: 10px; height: auto; overflow: hidden; }
 #w.fijo { height: calc(100vh - 20px); display: flex; flex-direction: column; overflow: hidden; } /* lo que no cabe se desplaza dentro del cuadro, sin pisar el borde */
 #w.fijo #w-c { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 #w.fijo #w-c::-webkit-scrollbar { display: none; }
-#wn-texto { border: 1px solid var(--b1, rgba(128,128,128,.45)); background: var(--campo-n, rgba(128,128,128,.10)); border-radius: 12px; padding: 6px 9px; } /* el cuadro de nota nueva se ve en todos los estilos (en consumo el fondo es transparente) */
+#wn-texto, #wa-texto { border: 1px solid var(--b1, rgba(128,128,128,.45)); background: var(--campo-n, rgba(128,128,128,.10)); border-radius: 12px; padding: 6px 9px; } /* el cuadro de nota nueva se ve en todos los estilos (en consumo el fondo es transparente) */

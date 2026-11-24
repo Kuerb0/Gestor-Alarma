@@ -127,10 +127,22 @@ try {
   # Restrict() interpreta las fechas con el formato regional del sistema (en es-ES: dd/MM/yyyy), NO con el de EE. UU.: con MM/dd el rango salía mal o vacío según el día
   $cu = [Globalization.CultureInfo]::CurrentCulture
   $filtro = "[Start] < '" + $d1.ToString('g', $cu) + "' AND [End] > '" + $d0.ToString('g', $cu) + "'"
-  $agenda = New-Object Collections.Generic.List[object]; $vistos = @{}; $categorias = New-Object Collections.Generic.List[object]; $nombres = @{}
+  $agenda = New-Object Collections.Generic.List[object]; $vistos = @{}; $categorias = New-Object Collections.Generic.List[object]
+  # Primera pasada: UN mapa global nombre -> color (@{} no distingue mayúsculas). Se recorren las cuentas empezando por la predeterminada: la primera que tiene la categoría CON color manda (salvo gris, ver abajo);
+  # las demás solo añaden las que faltan o las que no tenían color. Así una categoría tiene el mismo color en toda la agenda aunque cada cuenta guarde su propia lista.
+  $col = @{}; $nombres = @{}; $orden = New-Object Collections.Generic.List[string]; $stores = New-Object Collections.Generic.List[object]; $idDef = ''
+  try { $sd = $ns.DefaultStore; if ($sd) { $idDef = [string]$sd.StoreID; $stores.Add($sd) } } catch { }
+  foreach ($st in $ns.Stores) { $sid = ''; try { $sid = [string]$st.StoreID } catch { }; if (-not $idDef -or $sid -ne $idDef) { $stores.Add($st) } }
+  # Los grises (11-15) parecen «sin color»: un color de verdad de otra cuenta gana a un gris (caso real: «Personal» gris en la predeterminada y verde en la otra).
+  $debil = @{}
+  foreach ($st in $stores) {
+    try { foreach ($c in $st.Categories) { $ci = [int]$c.Color; $h = $paleta[$ci]; $n = [string]$c.Name; if (-not $n) { continue }; $gris = $ci -ge 11 -and $ci -le 15
+      if ($h -and (-not $col[$n] -or ($debil[$n] -and -not $gris))) { $col[$n] = $h; $debil[$n] = $gris }
+      if (-not $nombres[$n]) { $nombres[$n] = 1; $orden.Add($n) } } } catch { }
+  }
+  foreach ($n in $orden) { $categorias.Add([ordered]@{ nombre = $n; color = $col[$n] }) }
+  # Segunda pasada: los eventos de cada cuenta, coloreados con el mapa global
   foreach ($st in $ns.Stores) {
-    $col = @{}
-    try { foreach ($c in $st.Categories) { $h = $paleta[[int]$c.Color]; $n = [string]$c.Name; if ($h) { $col[$n] = $h }; if ($n -and -not $nombres[$n]) { $nombres[$n] = 1; $categorias.Add([ordered]@{ nombre = $n; color = $h }) } } } catch { }
     try { $cal = $st.GetDefaultFolder(9) } catch { continue }
     $items = $cal.Items; $items.Sort('[Start]'); $items.IncludeRecurrences = $true
     foreach ($a in $items.Restrict($filtro)) {

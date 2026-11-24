@@ -498,6 +498,12 @@ $('nt-lista').addEventListener('click', e => {
 const pintaSistema = () => { $('sistema').innerHTML = htmlSistema(sis, bateria); pintaWidgets(); };
 // ---- pestaña Widgets: galería con vista previa en vivo; la estructura se crea una vez y solo se refrescan las vistas y los «en el escritorio»
 let wCfgs = []; // [{ tipo, cfg }] de cada widget abierto
+let listaAl = null, formatoAl = 'adaptativo'; // alarmas del motor, para la vista previa del widget de Alarmas
+if (window.alarmas) {
+  window.alarmas.lista().then(l => { listaAl = l; pintaWidgets(); }); window.alarmas.alCambiar(l => { listaAl = l; pintaWidgets(); });
+  window.alarmas.formato().then(f => { formatoAl = f; }); window.alarmas.alFormato(f => { formatoAl = f; });
+  setInterval(() => { const g = $('widgets-g'); if (g && !$('p-widgets').hidden) g.querySelectorAll('.wa-lista').forEach(l => ticAlarmas(l, listaAl, formatoAl)); }, 1000); // las cuentas atrás de las vistas previas avanzan
+}
 const wN = v => wCfgs.filter(w => w.tipo === v.tipo && Object.keys(v.cfg).every(k => w.cfg[k] === v.cfg[k])).length; // cuántos widgets de esta variante hay en el escritorio
 function pintaWidgets() {
   const g = $('widgets-g'); if (!g || $('p-widgets').hidden) return;
@@ -508,7 +514,7 @@ function pintaWidgets() {
     const v = WVARIANTES[i], ancho = WANCHO[v.tipo][v.cfg.tam], el = b.firstElementChild, n = wN(v), cfg = { ...v.cfg, uid: 'v' + i };
     const abierto = wCfgs.find(w => w.tipo === v.tipo && Object.keys(v.cfg).every(k => w.cfg[k] === v.cfg[k])); el.dataset.tema = abierto && abierto.tema || 'claroscuro'; // vista previa con el tema del widget si está abierto; si no, claroscuro (se lee sobre cualquier fondo)
     el.style.setProperty('width', ancho + 'px'); el.style.setProperty('zoom', Math.min(1, dispo / ancho));
-    el.innerHTML = v.tipo === 'agenda' ? htmlAgenda(correo, cfg) : v.tipo === 'notas' ? htmlNotas(notas, cfg) : v.tipo === 'tiempo' ? htmlCiudades(meteo, ciudadSel, 0, meteoT, false, cfg).html : sis || bateria ? htmlSistema(sis, bateria, cfg) : '<div class="vacio">Cargando…</div>';
+    el.innerHTML = v.tipo === 'alarmas' ? htmlAlarmas(listaAl, cfg, Date.now(), formatoAl) : v.tipo === 'agenda' ? htmlAgenda(correo, cfg) : v.tipo === 'notas' ? htmlNotas(notas, cfg) : v.tipo === 'tiempo' ? htmlCiudades(meteo, ciudadSel, 0, meteoT, false, cfg).html : sis || bateria ? htmlSistema(sis, bateria, cfg) : '<div class="vacio">Cargando…</div>';
     colorea(el); b.setAttribute('aria-pressed', n > 0); b.lastElementChild.textContent = n ? (n > 1 ? n + ' en el escritorio' : 'En el escritorio') + ' · pulsa para añadir otro' : 'Pulsa para añadirlo al escritorio';
   });
 }

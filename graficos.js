@@ -81,7 +81,7 @@ function detalles(hs, o = {}) {
   return s ? `<div class="det">${s}</div>` : '';
 }
 // Galería de widgets (pestaña «Widgets»): cada variante = un tipo + su configuración completa. WANCHO = ancho real de la ventana (como en main.js).
-const WANCHO = { tiempo: { p: 300, m: 380, g: 520 }, sistema: { p: 260, m: 320, g: 420 }, agenda: { p: 280, m: 340, g: 440 }, notas: { p: 260, m: 320, g: 420 } };
+const WANCHO = { tiempo: { p: 300, m: 380, g: 520 }, sistema: { p: 260, m: 320, g: 420 }, agenda: { p: 280, m: 340, g: 440 }, notas: { p: 260, m: 320, g: 420 }, alarmas: { p: 280, m: 340, g: 440 } };
 const WVARIANTES = [
   { tipo: 'tiempo', nombre: 'Tiempo · Gráfico', cfg: { tam: 'p', ciu: false, graf: true, ico: false, lluvia: false, tmp: true, res: false, det: false, dias: false, ndias: 5 } },
   { tipo: 'tiempo', nombre: 'Tiempo · Ahora y próximos días', cfg: { tam: 'p', ciu: false, graf: false, ico: true, lluvia: true, tmp: true, res: true, det: false, dias: true, ndias: 3 } },
@@ -95,6 +95,8 @@ const WVARIANTES = [
   { tipo: 'agenda', nombre: 'Agenda · Semana', cfg: { tam: 'g', modo: 'eventos', nh: 10, todo: true, lugar: true, ndias: 7 } },
   { tipo: 'notas', nombre: 'Notas · Lista', cfg: { tam: 'm', fecha: true, nueva: false } },
   { tipo: 'notas', nombre: 'Notas · Con añadir', cfg: { tam: 'm', fecha: false, nueva: true } },
+  { tipo: 'alarmas', nombre: 'Alarmas · Lista', cfg: { tam: 'm', n: 5, crear: false, externas: true } },
+  { tipo: 'alarmas', nombre: 'Alarmas · Con campo', cfg: { tam: 'm', n: 3, crear: true, externas: false } },
 ];
 const NOM_DIA = ['Hoy', 'Mañana', 'Pasado mañana'];
 // Todo el bloque del tiempo (flechas de día, gráfico, resumen, detalles y próximos días). `dia` = día elegido (0 = hoy), `t0` = cuándo llegó
@@ -151,6 +153,7 @@ function htmlSistema(sis, bateria, o = {}) { // `o` (opcional, solo el widget): 
 const HEX = /^#[0-9a-f]{6}$/i, hhmm2 = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 const colorea = raiz => { // CSP sin style inline: los colores (data-c), el nº de horas (data-nh) y las posiciones en % de la agenda por horas (data-y/h/x/w) se ponen aquí
   raiz.querySelectorAll('[data-c]').forEach(e => e.style.setProperty('--c', e.dataset.c));
+  raiz.querySelectorAll('[data-col]').forEach(e => { e.style.color = e.dataset.col; }); // color de la cuenta atrás de Alarmas (Tiempo.color)
   raiz.querySelectorAll('[data-nh]').forEach(e => e.style.setProperty('--nh', e.dataset.nh));
   raiz.querySelectorAll('.wh [data-y]').forEach(e => { const d = e.dataset; e.style.top = d.y + '%'; if (d.h) e.style.height = d.h + '%'; if (d.x) { e.style.left = d.x + '%'; e.style.width = d.w + '%'; } });
 };
@@ -198,4 +201,39 @@ function htmlNotas(lista, o = {}) {
   const cuerpo = !lista ? '<div class="vacio">Cargando…</div>' : !lista.length ? '<div class="vacio">Sin notas todavía</div>'
     : lista.map(n => `<article class="wn-nota"><div class="wn-t">${esc(n.texto)}</div>${o.fecha !== false && fechaNotaW(n.creada) ? `<time>${esc(fechaNotaW(n.creada))}</time>` : ''}</article>`).join('');
   return nueva + `<div class="wn-lista wn-${['p', 'm', 'g'].includes(o.tam) ? o.tam : 'm'}">${cuerpo}</div>`;
+}
+
+// Alarmas (widget y galería). `lista` = alarmas del motor (null = aún sin cargar), `ahora` en ms y `formato` 'adaptativo' | 'completo' (lo manda alarmas.js). Usa el global Tiempo (tiempo.js).
+// o.n = cuántas filas (3/5/8), o.externas = false quita las de Post-It y Outlook, o.crear = false quita el campo (en la galería, uid, sale desactivado). Cada fila lleva data-id: `ticAlarmas` solo
+// actualiza el tiempo, la fase y el color de las que ya están pintadas (sin rehacer el DOM cada segundo). Los colores van en data-col (colorea) o los pone ticAlarmas.
+const ETIQ_ORIGEN = { outlook: 'Outlook', postit: 'Post-It' };
+function visiblesAlarmas(lista, o = {}, ahora = Date.now()) { // las que se enseñan, en orden (lo que suena primero) y cuántas quedan fuera
+  const n = [3, 5, 8].includes(o.n) ? o.n : 5;
+  const ord = Tiempo.ordenar((lista || []).filter(a => (o.externas !== false || !a.origen) && Tiempo.fase(a, ahora).fase !== 'fin'), ahora);
+  return { vis: ord.slice(0, n), resto: Math.max(0, ord.length - n) };
+}
+const textoAl = (a, f, formato) => f.fase === 'perdida' ? 'PERDIDA' : f.fase === 'sonando' && f.ms === undefined ? '00:00' : Tiempo.formatear(f.ms, a.tipo === 'crono', formato);
+const colorAl = (a, f) => f.fase === 'activa' ? Tiempo.color(a.tipo === 'crono' ? Infinity : f.ms) : ''; // sonando y perdida las colorea el CSS
+function htmlFilasAlarmas(lista, o = {}, ahora = Date.now(), formato = 'adaptativo') {
+  if (!lista) return '<div class="vacio">Cargando…</div>';
+  const { vis, resto } = visiblesAlarmas(lista, o, ahora);
+  if (!vis.length) return '<div class="vacio">Sin alarmas</div>';
+  return vis.map(a => {
+    const f = Tiempo.fase(a, ahora), col = colorAl(a, f);
+    return `<div class="wa-f${f.fase === 'sonando' ? ' sonando' : f.fase === 'perdida' ? ' perdida' : ''}" data-id="${esc(a.id)}"><span class="wa-n">${esc(a.nombre)}${a.origen ? `<small>${ETIQ_ORIGEN[a.origen] || esc(a.origen)}</small>` : ''}</span>` +
+      `<span class="wa-t"${col ? ` data-col="${col}"` : ''}>${esc(textoAl(a, f, formato))}</span>${a.origen ? '<span></span>' : `<button class="wa-x" data-id="${esc(a.id)}" aria-label="Borrar ${esc(a.nombre)}" title="Borrar">×</button>`}</div>`;
+  }).join('') + (resto ? `<div class="wa-mas">+${resto} más</div>` : '');
+}
+function htmlAlarmas(lista, o = {}, ahora = Date.now(), formato = 'adaptativo') {
+  const campo = o.crear === false ? '' : `<input ${o.uid ? 'disabled' : 'id="wa-texto"'} class="campo" autocomplete="off" maxlength="120" aria-label="Nueva alarma" placeholder="Pizza 25m · Dentista mañana 10:00">${o.uid ? '' : '<div id="wa-vista"></div>'}`;
+  return campo + `<div class="wa-lista">${htmlFilasAlarmas(lista, o, ahora, formato)}</div>`;
+}
+function ticAlarmas(raiz, lista, formato, ahora = Date.now()) { // actualiza en su sitio las filas ya pintadas
+  raiz.querySelectorAll('.wa-f').forEach(e => {
+    const a = (lista || []).find(x => x.id === e.dataset.id); if (!a) return;
+    const f = Tiempo.fase(a, ahora), t = e.querySelector('.wa-t'), txt = textoAl(a, f, formato), col = colorAl(a, f);
+    e.classList.toggle('sonando', f.fase === 'sonando'); e.classList.toggle('perdida', f.fase === 'perdida');
+    if (t.textContent !== txt) t.textContent = txt;
+    if (t.dataset.col !== col) { t.dataset.col = col; t.style.color = col; }
+  });
 }

@@ -1,13 +1,14 @@
 // Widget del escritorio: la misma gráfica que una pestaña del panel (tipo = tiempo | sistema), en su propia ventana.
 const $ = id => document.getElementById(id);
-const tipo = ['sistema', 'agenda', 'notas'].includes(new URLSearchParams(location.search).get('tipo')) ? new URLSearchParams(location.search).get('tipo') : 'tiempo';
-let notas = null, correo = null, meteo = null, meteoT = 0, diaSel = 0, sis = null, bateria = null, ciudadSel = '';
+const tipo = ['sistema', 'agenda', 'notas', 'alarmas'].includes(new URLSearchParams(location.search).get('tipo')) ? new URLSearchParams(location.search).get('tipo') : 'tiempo';
+let notas = null, listaAl = null, formatoAl = 'adaptativo', firmaAl = '', correo = null, meteo = null, meteoT = 0, diaSel = 0, sis = null, bateria = null, ciudadSel = '';
 try { ciudadSel = localStorage.getItem('wciudad') || ''; } catch {}
-document.getElementById('w').classList.toggle('sis', tipo === 'sistema' || tipo === 'notas');
+document.getElementById('w').classList.toggle('sis', tipo === 'sistema' || tipo === 'notas' || tipo === 'alarmas');
 function pinta() {
   if (tipo === 'tiempo') { const o = htmlCiudades(meteo, ciudadSel, diaSel, meteoT, false, cfg); diaSel = o.dia; ciudadSel = o.sel; $('w-c').innerHTML = o.html; }
   else if (tipo === 'agenda') { diaSel = clamp(diaSel, 0, maxDiaAg(correo)); $('w-c').innerHTML = htmlAgenda(correo, { ...cfg, dia: diaSel }); colorea($('w-c')); }
   else if (tipo === 'notas') pintaNotasW();
+  else if (tipo === 'alarmas') pintaAlarmasW();
   else $('w-c').innerHTML = sis || bateria ? htmlSistema(sis, bateria, cfg) : '<div class="vacio">Cargando…</div>';
 }
 function pintaNotasW() { // si se está escribiendo una nota, solo se repinta la lista (el cuadro conserva texto y foco)
@@ -15,14 +16,32 @@ function pintaNotasW() { // si se está escribiendo una nota, solo se repinta la
   if (t && l && cfg.nueva !== false && (t.value || document.activeElement === t)) { const tmp = document.createElement('div'); tmp.innerHTML = htmlNotas(notas, cfg); l.replaceWith(tmp.querySelector('.wn-lista')); return; }
   $('w-c').innerHTML = htmlNotas(notas, cfg);
 }
+// Alarmas: el campo de crear conserva texto, foco y mensaje (solo se repinta la lista); cada segundo solo se actualizan los tiempos, salvo que cambien las filas visibles o su orden
+function pintaAlarmasW() {
+  const l = $('w-c').querySelector('.wa-lista'), ahora = Date.now();
+  firmaAl = firmaAlarmas(ahora);
+  if (l && !!$('wa-texto') === (cfg.crear !== false)) { const tmp = document.createElement('div'); tmp.innerHTML = htmlAlarmas(listaAl, cfg, ahora, formatoAl); l.replaceWith(tmp.querySelector('.wa-lista')); }
+  else $('w-c').innerHTML = htmlAlarmas(listaAl, cfg, ahora, formatoAl);
+  colorea($('w-c'));
+}
+const firmaAlarmas = ahora => { const { vis, resto } = visiblesAlarmas(listaAl, cfg, ahora); return vis.map(a => a.id).join() + '|' + resto + '|' + (listaAl === null); };
+function ticAl() { const ahora = Date.now(); if (firmaAlarmas(ahora) !== firmaAl) pintaAlarmasW(); else ticAlarmas($('w-c'), listaAl, formatoAl, ahora); }
+const ETIQ_AL = { cuenta: 'cuenta atrás', fecha: 'alarma', crono: 'cronómetro', recurrente: 'repetición' }, p2 = n => String(n).padStart(2, '0');
+function mensajeAl(txt, mal, negrita) { const v = $('wa-vista'); if (!v) return; v.className = mal ? 'mal' : ''; v.textContent = ''; if (negrita) { const b = document.createElement('b'); b.textContent = negrita; v.append(b, ' ' + txt); } else v.textContent = txt; }
+function vistaAl() { // vista previa como en la pestaña Alarmas (Tiempo.parsear)
+  const t = $('wa-texto').value; if (!t.trim()) return mensajeAl('');
+  const r = Tiempo.parsear(t, Date.now()); if (!r.ok) return mensajeAl(r.error, true);
+  const c = r.rec, rep = c.tipo === 'recurrente' ? ' ' + Tiempo.etiquetaDias(c.dias) + ' ' + p2(c.hh) + ':' + p2(c.mm) : '';
+  mensajeAl('· ' + ETIQ_AL[c.tipo] + rep + (c.tipo === 'crono' ? '' : ' · ' + (c.tipo === 'recurrente' ? 'próxima en ' : '') + Tiempo.formatear(c.objetivo - Date.now(), false, formatoAl) + ' (' + new Date(c.objetivo).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '') + ')'), false, c.nombre);
+}
 // ---- configuración: tamaño (pequeño/mediano/grande) y qué información se ve; se guarda en los ajustes y la ventana cambia de ancho sola
-const SEC = tipo === 'notas' ? [['fecha', 'Fecha'], ['nueva', 'Añadir']] : tipo === 'agenda' ? [['todo', 'Todo el día'], ['lugar', 'Lugar']] : tipo === 'tiempo'
+const SEC = tipo === 'alarmas' ? [['crear', 'Campo para crear'], ['externas', 'Post-It y Outlook']] : tipo === 'notas' ? [['fecha', 'Fecha'], ['nueva', 'Añadir']] : tipo === 'agenda' ? [['todo', 'Todo el día'], ['lugar', 'Lugar']] : tipo === 'tiempo'
   ? [['ciu', 'Ciudades'], ['graf', 'Gráfico'], ['ico', 'Iconos'], ['lluvia', 'Lluvia'], ['tmp', 'Temp. cada 3 h'], ['res', 'Resumen'], ['det', 'Detalles'], ['dias', 'Próx. días']]
   : [['cpu', 'CPU'], ['ram', 'RAM'], ['disco', 'Disco'], ['disp', 'Dispositivos'], ['bat', 'Batería']];
-const NIVELES = tipo === 'notas' ? { Mínimo: { fecha: 0, nueva: 0 }, Normal: { fecha: 1, nueva: 0 }, Completo: { fecha: 1, nueva: 1 } } : tipo === 'agenda' ? { Mínimo: { todo: 0, lugar: 0 }, Normal: { todo: 1, lugar: 0 }, Completo: { todo: 1, lugar: 1 } } : tipo === 'tiempo' // atajos: de «solo lo básico» a «todo»
+const NIVELES = tipo === 'alarmas' ? { Mínimo: { crear: 0, externas: 0 }, Normal: { crear: 0, externas: 1 }, Completo: { crear: 1, externas: 1 } } : tipo === 'notas' ? { Mínimo: { fecha: 0, nueva: 0 }, Normal: { fecha: 1, nueva: 0 }, Completo: { fecha: 1, nueva: 1 } } : tipo === 'agenda' ? { Mínimo: { todo: 0, lugar: 0 }, Normal: { todo: 1, lugar: 0 }, Completo: { todo: 1, lugar: 1 } } : tipo === 'tiempo' // atajos: de «solo lo básico» a «todo»
   ? { Mínimo: { ciu: 0, graf: 1, ico: 0, lluvia: 0, tmp: 0, res: 0, det: 0, dias: 0 }, Normal: { ciu: 1, graf: 1, ico: 1, lluvia: 1, tmp: 1, res: 1, det: 0, dias: 1 }, Completo: { ciu: 1, graf: 1, ico: 1, lluvia: 1, tmp: 1, res: 1, det: 1, dias: 1 } }
   : { Mínimo: { cpu: 1, ram: 1, disco: 0, disp: 0, bat: 0 }, Normal: { cpu: 1, ram: 1, disco: 1, disp: 0, bat: 1 }, Completo: { cpu: 1, ram: 1, disco: 1, disp: 1, bat: 1 } };
-let cfg = { tam: 'm', ndias: tipo === 'agenda' ? 3 : 5, modo: 'eventos', h0: tipo === 'agenda' ? 8 : 0, h1: tipo === 'agenda' ? 20 : 24 }; try { cfg = { ...cfg, ...JSON.parse(new URLSearchParams(location.search).get('cfg')) }; } catch {}
+let cfg = { tam: 'm', n: 5, ndias: tipo === 'agenda' ? 3 : 5, modo: 'eventos', h0: tipo === 'agenda' ? 8 : 0, h1: tipo === 'agenda' ? 20 : 24 }; try { cfg = { ...cfg, ...JSON.parse(new URLSearchParams(location.search).get('cfg')) }; } catch {}
 if (cfg.ciudad) ciudadSel = cfg.ciudad; // cada widget del Tiempo guarda su ciudad (dos widgets pueden enseñar ciudades distintas)
 // ---- tema de contraste: automático (main.js mide el fondo del escritorio y manda el tema efectivo) o elegido a mano. data-tema en #w; los colores de cada tema están en panel.css
 const TEMAS = [['auto', 'Automático'], ['claro', 'Claro (fondo oscuro)'], ['oscuro', 'Oscuro (fondo claro)'], ['claroscuro', 'Claroscuro (fondo mixto)'], ['velado', 'Velado'], ['contraste', 'Alto contraste']];
@@ -40,12 +59,13 @@ function pintaCfg() {
   const tam = [['p', 'Pequeño'], ['m', 'Mediano'], ['g', 'Grande']].map(([k, n]) => `<button class="cfg-b" data-tam="${k}" aria-pressed="${cfg.tam === k}">${n}</button>`).join('');
   const niv = Object.keys(NIVELES).map(n => `<button class="cfg-b" data-niv="${n}">${n}</button>`).join('');
   const sw = SEC.map(([k, n]) => `<label class="cfg-c"><input type="checkbox" data-k="${k}"${cfg[k] !== false ? ' checked' : ''}> ${n}</label>`).join('');
+  const na = tipo === 'alarmas' ? `<div class="cfg-f"><span>Alarmas</span>${[3, 5, 8].map(n => `<button class="cfg-b" data-na="${n}" aria-pressed="${cfg.n === n}">${n}</button>`).join('')}</div>` : '';
   const nd = tipo === 'tiempo' ? `<div class="cfg-f"><span>Próx. días</span>${[3, 5, 7].map(n => `<button class="cfg-b" data-nd="${n}" aria-pressed="${cfg.ndias === n}">${n}</button>`).join('')}</div>` : '';
   const hop = (de, a, v) => Array.from({ length: a - de + 1 }, (_, k) => de + k).map(h => `<option value="${h}"${h === v ? ' selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join(''); // rango de horas editable (mín. 2 h entre Desde y Hasta)
   const selHoras = `<div class="cfg-f"><span>Horas</span><select class="cfg-s" data-hh="h0" aria-label="Hora inicial">${hop(0, 22, cfg.h0)}</select><span>a</span><select class="cfg-s" data-hh="h1" aria-label="Hora final">${hop(Math.min(cfg.h0 + 2, 24), 24, cfg.h1)}</select></div>`;
   const ag = tipo !== 'agenda' ? '' : `<div class="cfg-f"><span>Ver</span>${[['eventos', 'Eventos'], ['horas', 'Horas']].map(([k, n]) => `<button class="cfg-b" data-modo="${k}" aria-pressed="${cfg.modo === k}">${n}</button>`).join('')}</div>${cfg.modo === 'horas' ? selHoras : `<div class="cfg-f"><span>Días</span>${[1, 3, 7].map(n => `<button class="cfg-b" data-nd="${n}" aria-pressed="${cfg.ndias === n}">${n}</button>`).join('')}</div>`}`;
   const selTema = `<div class="cfg-f"><span>Tema</span><select class="cfg-s" id="w-tema" aria-label="Tema de contraste" title="${tema === 'auto' ? 'Automático: mide el fondo del escritorio (ahora: ' + nombreTema(temaEf).toLowerCase() + ')' : nombreTema(tema)}">${TEMAS.map(([k, n]) => `<option value="${k}"${k === tema ? ' selected' : ''}>${n}</option>`).join('')}</select></div>`;
-  $('w-cfg').innerHTML = `${ag}${tipo === 'tiempo' && cfg.graf !== false ? selHoras : ''}<div class="cfg-f"><span>Tamaño</span>${tam}</div><div class="cfg-f"><span>Detalle</span>${niv}</div>${selTema}<div class="cfg-g">${sw}</div>${nd}`;
+  $('w-cfg').innerHTML = `${ag}${tipo === 'tiempo' && cfg.graf !== false ? selHoras : ''}<div class="cfg-f"><span>Tamaño</span>${tam}</div><div class="cfg-f"><span>Detalle</span>${niv}</div>${selTema}<div class="cfg-g">${sw}</div>${nd}${na}`;
 }
 $('w-g').onclick = () => { const h = $('w-cfg').hidden; $('w-cfg').hidden = !h; $('w-g').setAttribute('aria-expanded', h); if (h) pintaCfg(); };
 document.addEventListener('contextmenu', e => { // clic derecho: abre el panel de ajustes (con el rango de horas) y lo deja a la vista
@@ -56,6 +76,7 @@ $('w-cfg').addEventListener('click', e => {
   const b = e.target.closest('.cfg-b'); if (!b) return;
   if (b.dataset.tam) { cfg.tam = b.dataset.tam; $('w').classList.remove('fijo'); } // elegir un tamaño vuelve al automático
   else if (b.dataset.nd) cfg.ndias = +b.dataset.nd;
+  else if (b.dataset.na) cfg.n = +b.dataset.na;
   else if (b.dataset.modo) cfg.modo = b.dataset.modo;
   else if (b.dataset.niv) Object.entries(NIVELES[b.dataset.niv]).forEach(([k, v]) => cfg[k] = !!v);
   guardaCfg();
@@ -89,6 +110,15 @@ try { if (!localStorage.getItem('estilo-consumo-' + tipo)) { localStorage.setIte
 const aplicaEstilo = () => { $('w').dataset.estilo = estilo; $('w-e').title = 'Estilo: ' + estilo + ' (clic para cambiar)'; };
 aplicaEstilo();
 $('w-e').onclick = () => { estilo = ESTILOS[(ESTILOS.indexOf(estilo) + 1) % ESTILOS.length]; aplicaEstilo(); api.widgetEstilo(estilo); };
+$('w-c').addEventListener('input', e => { if (e.target.id === 'wa-texto') vistaAl(); });
+$('w-c').addEventListener('keydown', async e => { // Alarmas: Intro crea, Esc vacía
+  if (e.target.id !== 'wa-texto') return;
+  if (e.key === 'Escape') { e.target.value = ''; mensajeAl(''); return; }
+  if (e.key !== 'Enter') return;
+  e.preventDefault(); const r = Tiempo.parsear(e.target.value, Date.now()); if (!r.ok) return mensajeAl(r.error, true);
+  const g = await window.alarmas.crear(r.rec); if (!g.ok) return mensajeAl(g.error, true);
+  e.target.value = ''; mensajeAl('Añadida ✔');
+});
 $('w-c').addEventListener('keydown', e => { // Intro guarda la nota nueva; Mayús+Intro = salto de línea
   if (e.target.id !== 'wn-texto' || e.key !== 'Enter' || e.shiftKey) return;
   e.preventDefault(); const v = e.target.value.trim(); if (!v) return; e.target.value = ''; api.notasAnadir(v);
@@ -105,6 +135,7 @@ $('w').addEventListener('pointerdown', e => {
 $('w-x').onclick = () => api.widgetCerrar();
 $('w-d').onclick = () => api.widgetDuplicar();
 $('w-c').addEventListener('click', e => {
+  const x = e.target.closest('.wa-x'); if (x) { window.alarmas.borrar(x.dataset.id); return; } // Alarmas: × de las propias
   const b = e.target.closest('.fr-b'), c = e.target.closest('.ciu-n');
   if (b && !b.disabled) { diaSel += +b.dataset.d; pinta(); }
   else if (c) { ciudadSel = c.dataset.c; try { localStorage.setItem('wciudad', ciudadSel); } catch {} cfg.ciudad = ciudadSel; api.widgetCfg(cfg); pinta(); }
@@ -112,6 +143,11 @@ $('w-c').addEventListener('click', e => {
 api.on('tema', t => t && /^#[0-9a-f]{6}$/i.test(t.acento) && document.documentElement.style.setProperty('--acento', t.acento));
 if (tipo === 'tiempo') { api.on('meteo', r => { meteo = r; meteoT = Date.now(); pinta(); }); setInterval(pinta, 6e4); } // la rayita de ahora avanza sola
 else if (tipo === 'notas') api.on('notas', l => { notas = l; pinta(); });
+else if (tipo === 'alarmas') { // datos del motor (alarmas.js): lista y formato por los mismos canales que el panel
+  window.alarmas.lista().then(l => { listaAl = l; pinta(); }); window.alarmas.alCambiar(l => { listaAl = l; pinta(); });
+  window.alarmas.formato().then(f => { formatoAl = f; ticAl(); }); window.alarmas.alFormato(f => { formatoAl = f; ticAl(); });
+  setInterval(ticAl, 1000);
+}
 else if (tipo === 'agenda') { api.on('correo', r => { correo = r; pinta(); }); setInterval(pinta, 6e4); } // la línea de «ahora» avanza sola
 else {
   api.on('sistema', s => { sis = s; pinta(); });

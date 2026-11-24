@@ -244,8 +244,8 @@ app.on('will-quit', () => { try { uso && uso.cerrar(); } catch {} try { vigia &&
 // ---- widgets del escritorio: la gráfica del Tiempo, Sistema, Agenda o Notas en su propia ventanita transparente, arrastrable y sin ser «siempre encima»
 // (se queda con las demás ventanas). Puede haber varios del mismo tipo (también duplicados): cada uno tiene su id y su entrada en ajustes.widgets[id]
 // ({ tipo, cfg, estilo, x, y, ancho, alto, abierto }). El primero de cada tipo usa el propio tipo como id (así siguen valiendo los ajustes de antes).
-const WIDGETS = { tiempo: { ancho: { p: 300, m: 380, g: 520 }, nombre: 'Tiempo' }, sistema: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Sistema' }, agenda: { ancho: { p: 280, m: 340, g: 440 }, nombre: 'Agenda' }, notas: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Notas' } };
-const CFG_BOOL = { tiempo: ['ciu', 'graf', 'ico', 'lluvia', 'tmp', 'res', 'det', 'dias'], sistema: ['cpu', 'ram', 'disco', 'disp', 'bat'], agenda: ['todo', 'lugar'], notas: ['fecha', 'nueva'] }; // qué se puede mostrar/ocultar en cada widget
+const WIDGETS = { tiempo: { ancho: { p: 300, m: 380, g: 520 }, nombre: 'Tiempo' }, sistema: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Sistema' }, agenda: { ancho: { p: 280, m: 340, g: 440 }, nombre: 'Agenda' }, notas: { ancho: { p: 260, m: 320, g: 420 }, nombre: 'Notas' }, alarmas: { ancho: { p: 280, m: 340, g: 440 }, nombre: 'Alarmas' } };
+const CFG_BOOL = { tiempo: ['ciu', 'graf', 'ico', 'lluvia', 'tmp', 'res', 'det', 'dias'], sistema: ['cpu', 'ram', 'disco', 'disp', 'bat'], agenda: ['todo', 'lugar'], notas: ['fecha', 'nueva'], alarmas: ['crear', 'externas'] }; // qué se puede mostrar/ocultar en cada widget
 const WMIN = { ancho: 160, alto: 80 }, WMAX = 1400; // límites del tamaño a mano
 const gw = id => (ajustes.widgets && ajustes.widgets[id]) || {};
 const ponGw = (id, v) => { ajustes.widgets = { ...ajustes.widgets, [id]: { ...gw(id), ...v } }; };
@@ -262,6 +262,7 @@ function cfgWidget(id, c = gw(id).cfg) { // configuración saneada: tamaño (p/m
   const n = { tam: ['p', 'm', 'g'].includes(c.tam) ? c.tam : 'm' };
   CFG_BOOL[tipo].forEach(k => n[k] = c[k] !== false);
   if (tipo === 'tiempo') { n.ndias = [3, 5, 7].includes(c.ndias) ? c.ndias : 5; if (typeof c.ciudad === 'string' && c.ciudad) n.ciudad = c.ciudad.slice(0, 120); } // cada widget del Tiempo recuerda su ciudad
+  if (tipo === 'alarmas') n.n = [3, 5, 8].includes(c.n) ? c.n : 5; // cuántas alarmas se enseñan
   if (tipo === 'agenda') { n.modo = c.modo === 'horas' ? 'horas' : 'eventos'; n.ndias = [1, 3, 7].includes(c.ndias) ? c.ndias : 3; }
   { const d0 = tipo === 'agenda' ? 8 : 0, d1 = tipo === 'agenda' ? 20 : 24; if (tipo === 'tiempo' || tipo === 'agenda') { n.h0 = Number.isInteger(c.h0) ? Math.max(0, Math.min(22, c.h0)) : d0; n.h1 = Math.max(n.h0 + 2, Math.min(24, Number.isInteger(c.h1) ? c.h1 : d1)); } } // rango de horas editable: eje del gráfico del Tiempo / línea de tiempo de la Agenda
   return n;
@@ -617,7 +618,7 @@ app.whenReady().then(async () => {
   AJUSTES = path.join(app.getPath('userData'), 'ajustes.json');
   try { ajustes = { ...ajustes, ...JSON.parse(fs.readFileSync(AJUSTES, 'utf8')) }; } catch {}
   crearVentana();
-  Alarmas.iniciar({ app, log, HUMO, alAbrir: abrirAlarmas, alEtiquetas: agendaAlOverlay, ventanas: () => [win] });
+  Alarmas.iniciar({ app, log, HUMO, alAbrir: abrirAlarmas, alEtiquetas: agendaAlOverlay, ventanas: () => [win, ...abiertosDe('alarmas').map(id => widgets.get(id))] }); // el panel y los widgets de Alarmas reciben los cambios del motor
   uso = require('./uso').crear({ dir: path.join(app.getPath('userData'), 'uso') }); uso.limpiar(); setInterval(() => uso.limpiar(), 864e5);
   if (HUMO) { // datos de uso inventados de ayer y hoy, para que los gráficos tengan algo que enseñar
     const d0 = new Date(); d0.setHours(0, 0, 0, 0); const H = 36e5, M = 6e4, udir = path.join(app.getPath('userData'), 'uso'); fs.mkdirSync(udir, { recursive: true });
@@ -807,7 +808,7 @@ async function humo() {
   // widgets del escritorio: se abren, pintan el mismo gráfico/barras que la pestaña, se ajustan de alto y se quitan con la ×
   // galería: 7 variantes con vista previa; pulsar una abre el widget con esa configuración
   await js(win, `document.querySelector('button[data-tab="widgets"]').click()`); await esp(500);
-  if (await js(win, `document.querySelectorAll('.wg').length`) !== 12 || await js(win, `document.querySelectorAll('.wg-v .fr-g, .wg-v .barra').length`) < 3) fallos.push('galería: faltan tarjetas o vistas previas');
+  if (await js(win, `document.querySelectorAll('.wg').length`) !== 14 || await js(win, `document.querySelectorAll('.wg-v .fr-g, .wg-v .barra').length`) < 3) fallos.push('galería: faltan tarjetas o vistas previas');
   await captura('panel-widgets-galeria', win);
   await js(win, `document.querySelectorAll('.wg')[0].click()`); await esp(1200);
   if (!widgets.has('tiempo') || cfgWidget('tiempo').dias !== false || cfgWidget('tiempo').tam !== 'p') fallos.push('galería: pulsar una variante no abre el widget con su configuración');
@@ -964,6 +965,24 @@ async function humo() {
       if (await n(wn, '.wn-nota') !== 2) fallos.push('widget Notas: no se actualiza tras añadir');
     }
     ponerWidget('notas', false); await esp(200); }
+  // widget de Alarmas: pinta las alarmas de los datos de humo, y una escrita en su campo (Prueba 25m + Intro) llega al motor y a la lista del widget
+  ponerWidget('alarmas', true, { tam: 'm', n: 8, crear: true, externas: true }); await esp(900);
+  { const wa = widgets.get('alarmas');
+    if (!wa) fallos.push('widget Alarmas: no se abre');
+    else {
+      const filas = await n(wa, '.wa-f'); if (filas < 1) fallos.push('widget Alarmas: no pinta ninguna alarma (' + filas + ')');
+      if (!(await js(wa, `document.getElementById('w-c').textContent.includes('Reunión') && !!document.querySelector('.wa-x')`))) fallos.push('widget Alarmas: falta una alarma de los datos de humo o su ×');
+      await captura('widget-alarmas', wa);
+      await js(wa, `(t => { t.focus(); t.value = 'Prueba 25m'; t.dispatchEvent(new Event('input', { bubbles: true })); })(document.getElementById('wa-texto'))`); await esp(150);
+      if (!/cuenta atrás/.test(await js(wa, `document.getElementById('wa-vista').textContent`))) fallos.push('widget Alarmas: sin vista previa al escribir');
+      await js(wa, `document.getElementById('wa-texto').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`); await esp(600);
+      if (!(await js(win, `window.alarmas.lista().then(l => l.some(a => a.nombre === 'Prueba' && a.tipo === 'cuenta'))`))) fallos.push('widget Alarmas: la alarma escrita no llega al motor');
+      if (!(await js(wa, `[...document.querySelectorAll('.wa-n')].some(e => e.textContent.startsWith('Prueba'))`))) fallos.push('widget Alarmas: no se actualiza tras crear');
+      if (await js(wa, `document.getElementById('wa-texto').value`) !== '' || !/Añadida/.test(await js(wa, `document.getElementById('wa-vista').textContent`))) fallos.push('widget Alarmas: no vacía el campo ni avisa «Añadida»');
+      await js(wa, `[...document.querySelectorAll('.wa-x')].find(b => b.closest('.wa-f').textContent.startsWith('Prueba')).click()`); await esp(500);
+      if (await js(wa, `[...document.querySelectorAll('.wa-n')].some(e => e.textContent.startsWith('Prueba'))`) || await js(win, `window.alarmas.lista().then(l => l.some(a => a.nombre === 'Prueba'))`)) fallos.push('widget Alarmas: la × no borra la alarma');
+    }
+    ponerWidget('alarmas', false); await esp(200); }
   console.log(fallos.length ? 'HUMO FALLA\n' + fallos.join('\n') : 'HUMO OK · capturas en ' + salida);
   app.exit(fallos.length ? 1 : 0);
 }
