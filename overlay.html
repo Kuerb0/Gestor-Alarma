@@ -6,22 +6,23 @@
 /* liquid glass: la ventana es transparente (sin desenfoque del escritorio), así que el tinte + sombra dan la legibilidad */
 :root{--acento:#4a9eff;--ambar:#ffb000;--rojo:#ff5a4d;--font:"Segoe UI Variable Display","Segoe UI Variable","Segoe UI",system-ui,sans-serif;
   --vidrio:rgba(20,24,34,.72);--vidrio2:rgba(44,50,66,.62);--txt:#f2f5fa;--txt2:#b4bdcc;--sombra:rgba(0,0,0,.38);--ts:0 1px 2px rgba(0,0,0,.55);
-  --b1:rgba(255,255,255,.55);--b2:rgba(255,255,255,.08);--brillo:rgba(255,255,255,.2)}
+  --b1:rgba(255,255,255,.55);--b2:rgba(255,255,255,.08);--brillo:rgba(255,255,255,.2);
+  --r:999px;--rq:12px;--nf:10px;--nl:12px;--hf:24px;--hl:28px;--qw:112px;--qh:50px;--qnf:9px;--qnl:11px;--qhf:14px;--qhl:16px}
 @media (prefers-color-scheme:light){:root{--vidrio:rgba(250,252,255,.78);--vidrio2:rgba(226,233,246,.7);--txt:#161b26;--txt2:#4a5568;--sombra:rgba(30,40,70,.3);--ts:0 1px 2px rgba(255,255,255,.7);
   --b1:rgba(255,255,255,.95);--b2:rgba(255,255,255,.3);--brillo:rgba(255,255,255,.65)}}
 html,body{margin:0;background:transparent;overflow:hidden;font-family:var(--font)}
 body{padding:6px 10px 8px}
 #lista{display:flex;flex-direction:column;align-items:flex-end;gap:7px}
-.tarjeta{--th:var(--acento);position:relative;isolation:isolate;width:fit-content;box-sizing:border-box;padding:4px 17px 5px;border-radius:999px;text-align:center;
+.tarjeta{--th:var(--acento);position:relative;isolation:isolate;width:fit-content;box-sizing:border-box;padding:4px 17px 5px;border-radius:var(--r);text-align:center;
   background:linear-gradient(180deg,var(--vidrio2),var(--vidrio));box-shadow:0 4px 14px var(--sombra),0 1px 3px var(--sombra)}
-.tarjeta::before{content:"";position:absolute;z-index:-1;left:6px;right:6px;top:1px;height:46%;border-radius:999px 999px 60% 60%/999px 999px 100% 100%;
+.tarjeta::before{content:"";position:absolute;z-index:-1;left:6px;right:6px;top:1px;height:46%;border-radius:var(--r) var(--r) 60% 60%/var(--r) var(--r) 100% 100%;
   background:linear-gradient(180deg,var(--brillo),transparent)}
 .tarjeta::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
   background:linear-gradient(160deg,var(--b1),var(--b2) 45%,var(--b2) 60%,var(--b1));
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
-.nom{font-size:10px;font-weight:600;letter-spacing:.09em;line-height:12px;white-space:nowrap;color:var(--txt2);text-shadow:var(--ts)}
+.nom{font-size:var(--nf);font-weight:600;letter-spacing:.09em;line-height:var(--nl);white-space:nowrap;color:var(--txt2);text-shadow:var(--ts)}
 .tarjeta.c .nom{color:var(--nc)} /* antes de .sonando y .perdida, que mandan */
-.hora{font-size:24px;font-weight:600;line-height:28px;white-space:nowrap;color:var(--th);font-variant-numeric:tabular-nums;text-shadow:var(--ts)}
+.hora{font-size:var(--hf);font-weight:600;line-height:var(--hl);white-space:nowrap;color:var(--th);font-variant-numeric:tabular-nums;text-shadow:var(--ts)}
 .hora span,.nom span{display:inline-block;white-space:pre}
 .hora .c{animation:cam .16s ease-out}
 @keyframes cam{from{opacity:.25;transform:translateY(-35%)}}
@@ -34,16 +35,24 @@ body{padding:6px 10px 8px}
 .perdida{--th:var(--rojo);box-shadow:0 4px 14px var(--sombra),0 0 0 1px rgba(255,90,77,.5)}
 .perdida .nom{color:var(--rojo)}
 @media (prefers-reduced-motion:reduce){.sonando,.sonando .nom,.sonando .hora{animation:none}.sonando{background:linear-gradient(180deg,#ffc94d,#ffb000);box-shadow:0 0 18px rgba(255,176,0,.75)}.hora .c{animation:none}}
-.cuadro{--bc:var(--acento);position:relative;isolation:isolate;box-sizing:border-box;width:112px;height:50px;padding:3px 6px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center;
+.cuadro{--bc:var(--acento);position:relative;isolation:isolate;box-sizing:border-box;width:var(--qw);height:var(--qh);padding:3px 6px;border-radius:var(--rq);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center;
   background:linear-gradient(180deg,var(--vidrio2),var(--vidrio));border:2px solid var(--bc);box-shadow:0 4px 14px var(--sombra),0 0 10px color-mix(in srgb,var(--bc) 45%,transparent)}
-.cuadro::before{content:"";position:absolute;z-index:-1;left:6px;right:6px;top:1px;height:42%;border-radius:12px 12px 60% 60%/12px 12px 100% 100%;background:linear-gradient(180deg,var(--brillo),transparent)}
+.cuadro::before{content:"";position:absolute;z-index:-1;left:6px;right:6px;top:1px;height:42%;border-radius:var(--rq) var(--rq) 60% 60%/var(--rq) var(--rq) 100% 100%;background:linear-gradient(180deg,var(--brillo),transparent)}
 .cuadro.pronto{border-style:dashed} /* falta para que empiece */
 /* borde con el color de la etiqueta (alarmas desde la Agenda y eventos) */
 .tarjeta.c::after{background:linear-gradient(var(--nc),var(--nc));padding:2px}
 .tarjeta.c{box-shadow:0 4px 14px var(--sombra),0 0 10px color-mix(in srgb,var(--nc) 45%,transparent)}
-.cuadro .nom{font-size:9px;line-height:11px;max-width:100%;overflow:hidden;white-space:nowrap;color:var(--txt2)}
-.cuadro .hora{font-size:14px;line-height:16px;color:var(--bc)}
+.cuadro .nom{font-size:var(--qnf);line-height:var(--qnl);max-width:100%;overflow:hidden;white-space:nowrap;color:var(--txt2)}
+.cuadro .hora{font-size:var(--qhf);line-height:var(--qhl);color:var(--bc)}
 #mas{display:none;margin-top:6px;float:right;color:var(--txt2);font-size:11px;font-weight:600;padding:0 6px;text-shadow:0 0 3px var(--vidrio),0 0 6px var(--vidrio),var(--ts)}
+/* aspecto de las burbujas (ajustes.burbujas): forma, tamaño y esquina como clases del body */
+.f-redondeada{--r:16px;--rq:14px}.f-cuadrada{--r:4px;--rq:3px}
+.f-redondeada .tarjeta::before,.f-cuadrada .tarjeta::before{border-radius:var(--r) var(--r) 0 0}.f-cuadrada .cuadro::before{border-radius:var(--rq) var(--rq) 0 0}
+.t-pequeno{--nf:9px;--nl:11px;--hf:20px;--hl:24px;--qw:100px;--qh:44px;--qnf:8px;--qnl:10px;--qhf:12px;--qhl:14px}
+.t-grande{--nf:12px;--nl:14px;--hf:30px;--hl:34px;--qw:140px;--qh:60px;--qnf:11px;--qnl:13px;--qhf:17px;--qhl:19px}
+.iz #lista{align-items:flex-start}.iz #mas{float:left}
+.ab{display:flex;flex-direction:column;height:100vh;box-sizing:border-box}.ab #lista{flex-direction:column-reverse;margin-top:auto} /* abajo: lo urgente pegado al borde inferior */
+.ab #mas{order:-1;margin:0 0 6px;float:none;align-self:flex-end}.ab.iz #mas{align-self:flex-start}
 </style></head>
 <body><div id="lista"></div><div id="mas"></div>
 <script src="tiempo.js"></script>

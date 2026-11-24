@@ -23,6 +23,29 @@ function sinDuplicadas(propias, externas) {
   return externas.filter(e => e.origen !== 'outlook' || !p.some(a => norm(a.nombre) === norm(e.nombre) && Math.abs(a.objetivo - e.objetivo) < 6e4));
 }
 
+// Outlook manda: las alarmas propias a fecha ligadas a un evento (`outlookId` si se exportaron, `eventoId` si se pusieron desde la Agenda) copian su título, hora, color y categoría.
+// Devuelve [{ id, cambios }] solo con lo que cambia. No toca lo que no se encuentra (fuera de los días leídos), una ocurrencia de serie movida ni una edición local aún sin exportar.
+const COLOR = /^#[0-9a-f]{6}$/i;
+function reconciliar(alarmas, agenda, ahora) {
+  const out = [];
+  for (const a of alarmas || []) {
+    if (a.origen || a.tipo !== 'fecha' || a.descartada || !(a.objetivo > ahora - 60000)) continue;
+    const eid = a.eventoId || a.outlookId; if (!eid) continue;
+    if (a.outlookId && a.outlookHuella !== huella(a)) continue; // editada aquí y pendiente de exportar: gana lo de aquí
+    const ev = (agenda || []).find(e => e.id === eid && (!e.recurrente || e.inicio === a.inicioEv)); if (!ev) continue;
+    const c = {}, nombre = String(ev.titulo || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (nombre && nombre !== a.nombre) c.nombre = nombre;
+    const d = new Date(ev.inicio), ms = ev.todoDia ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9).getTime() : d.getTime();
+    if (Number.isFinite(ms) && ms !== a.objetivo) c.objetivo = ms;
+    if (COLOR.test(ev.color) && ev.color !== a.color) c.color = ev.color;
+    const cat = typeof ev.categoria === 'string' ? ev.categoria.slice(0, 60) : '';
+    if (cat !== (a.categoria || '')) c.categoria = cat;
+    if (a.eventoId && !ev.recurrente && ev.inicio && ev.inicio !== a.inicioEv) c.inicioEv = ev.inicio;
+    if (Object.keys(c).length) out.push({ id: a.id, cambios: c });
+  }
+  return out;
+}
+
 // Aplica las operaciones en Outlook → [{id, ok, entryId, error}] (o lanza si Outlook no está disponible)
 function aplicar(ops, calendario = '', ps1 = path.join(__dirname, 'outlook_escribir.ps1')) {
   const f = path.join(os.tmpdir(), 'gestor-outlook-' + process.pid + '-' + Date.now() + '.json');
@@ -41,4 +64,4 @@ function sinCopiasAlarma(agenda, etiqueta = 'Alarma') {
   return agenda.filter(e => norm(e.categoria) !== et || !agenda.some(o => o !== e && norm(o.categoria) !== et && norm(o.titulo) === norm(e.titulo) && Math.abs(t(o) - t(e)) < 6e4));
 }
 
-module.exports = { planificar, sinDuplicadas, sinCopiasAlarma, aplicar, huella, norm };
+module.exports = { planificar, reconciliar, sinDuplicadas, sinCopiasAlarma, aplicar, huella, norm };

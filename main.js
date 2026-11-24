@@ -96,7 +96,10 @@ async function leerCorreo() { // nunca dos lecturas de Outlook a la vez; si lleg
   if (!Correo || abriendoOutlook) return;
   if (leyendoCorreo) { pendienteCorreo = true; return; }
   leyendoCorreo = true;
-  try { const r = await Correo.leer({ dias: Math.max(diasAgenda, 14) }); conservar('correo', r.ok ? limpiar({ ...r, dias: diasAgenda }) : r); } // se leen ≥14 días (el overlay colorea alarmas lejanas); la pestaña pinta solo `dias`
+  try {
+    const r = await Correo.leer({ dias: Math.max(diasAgenda, 14) }), c = r.ok ? limpiar({ ...r, dias: diasAgenda }) : r; conservar('correo', c);
+    if (c.ok && Array.isArray(c.agenda)) try { Alarmas.seguirOutlook(c.agenda); } catch (e) { log('seguir Outlook ' + (e && e.stack || e)); } // las alarmas ligadas a un evento siguen sus cambios en Outlook
+  } // se leen ≥14 días (el overlay colorea alarmas lejanas); la pestaña pinta solo `dias`
   catch (e) { log('correo ' + e.message); conservar('correo', { ok: false, motivo: 'error' }); }
   finally { leyendoCorreo = false; ultCorreo = Date.now(); if (pendienteCorreo) { pendienteCorreo = false; leerCorreo(); } }
 }
@@ -688,6 +691,16 @@ async function humo() {
       const vuelta = await js(win, `(() => { const f = document.querySelector('#al-etq-l .etq'); return f ? [f.querySelector('.e-al').checked, f.querySelector('.e-an').value, f.querySelector('.e-au').value].join() : 'sin filas'; })()`);
       if (vuelta !== 'true,3,1440') fallos.push('etiquetas: la lista no conserva lo elegido (' + vuelta + ')');
       await js(win, `window.alarmas.syncEtiquetas([])`); await esp(200); // deja las etiquetas como estaban: si no, ese evento dejaría de salir como cuadro en el overlay
+      // aspecto de las burbujas: la sección existe, y cambiar la forma pone la clase en el overlay y se guarda
+      if (!await js(win, `!!document.querySelector('#al-asp summary') && /Aspecto de las burbujas/.test(document.querySelector('#al-asp summary').textContent)`)) fallos.push('falta la sección «Aspecto de las burbujas» en el panel');
+      else {
+        await js(win, `document.querySelector('#al-asp .asp-f[data-k="forma"] button[data-v="cuadrada"]').click()`); await esp(400);
+        if (!await js(Alarmas.overlay(), `document.body.classList.contains('f-cuadrada')`)) fallos.push('burbujas: la forma no llega al overlay');
+        let gb = null; try { gb = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'ajustes.json'), 'utf8')).burbujas; } catch {}
+        if (!gb || gb.forma !== 'cuadrada') fallos.push('burbujas: no se guardan en disco (' + JSON.stringify(gb) + ')');
+        await js(win, `document.getElementById('as-reset').click()`); await esp(400);
+        if (await js(Alarmas.overlay(), `document.body.classList.contains('f-cuadrada')`)) fallos.push('burbujas: Restablecer no vuelve a la píldora');
+      }
     }
     if (t === 'uso' && !tema) { // los gráficos con datos de uso inventados (escritos en el userData temporal antes de abrir la ventana)
       await esp(500);

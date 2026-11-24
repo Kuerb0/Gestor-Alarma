@@ -1,10 +1,10 @@
 // Motor de alarmas (antes Gestor-Alarmas): estado, disco, tic, sincronización con Post-It/Outlook, overlay split-flap e IPC.
 const { BrowserWindow, ipcMain, screen } = require('electron');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
-const T = require('./tiempo'), Puente = require('./puente'), Salida = require('./outlook_salida');
+const T = require('./tiempo'), Puente = require('./puente'), Salida = require('./outlook_salida'), Burbujas = require('./burbujas');
 
 const ICONO = path.join(__dirname, 'assets', 'icon.png');
-const W = 260, H = 480; // el overlay es transparente y click-through: tener más espacio del necesario no estorba
+const W = 260, H = 480, ANCHO = { pequeno: 240, mediano: 260, grande: 320 }; // ancho del overlay según el tamaño de las burbujas // el overlay es transparente y click-through: tener más espacio del necesario no estorba
 let app, log, HUMO, ventanas = () => [], alAbrir = () => {}, alEtiquetas = () => {};
 let DIR, DATOS, AJUSTES, alarmas = [], externas = [], descartadasExt = new Set(), sincronizando = false, promesaSync = null, ultimoSync = null, exportando = false, pendientesBorrar = [], proximoIntentoOutlook = 0, categorias = {}, ajustes = { formato: 'adaptativo', ventanaDias: 14, calendarioOutlook: '' }, overlay;
 
@@ -90,6 +90,19 @@ function sincronizar() { // si ya hay una lectura en curso, devuelve esa misma
   return promesaSync;
 }
 
+// ---- Outlook manda: tras cada lectura de la agenda, las alarmas ligadas a un evento copian su título, hora, color y categoría (ver Salida.reconciliar)
+function seguirOutlook(agenda) {
+  const ahora = Date.now(), cs = Salida.reconciliar(alarmas, agenda, ahora); if (!cs.length) return 0;
+  for (const { id, cambios } of cs) {
+    const a = alarmas.find(x => x.id === id); if (!a) continue;
+    const { categoria, ...resto } = cambios; Object.assign(a, resto);
+    if (categoria !== undefined) { if (categoria) a.categoria = categoria; else delete a.categoria; }
+    if (cambios.objetivo !== undefined && a.objetivo > ahora) { delete a.avisada; delete a.descartada; } // movida al futuro: vuelve a sonar
+    if (a.outlookId) a.outlookHuella = Salida.huella(a); // lo que viene de Outlook no se le devuelve (sin bucle)
+  }
+  guardar(); return cs.length;
+}
+
 // ---- Alarmas → Outlook: las alarmas a fecha y hora se crean como eventos (categoría «Alarma») en el calendario `calendarioOutlook` de ajustes.json (vacío: el primero que haya).
 // Se edita y se borra allí cuando se edita o borra aquí. Si Outlook falla se reintenta a los 5 min. ponytail: un borrado que falla se da por hecho (el evento pudo borrarse ya a mano).
 const PEND = () => path.join(DIR, 'outlook-pendiente.json');
@@ -112,10 +125,12 @@ async function exportarOutlook() {
   finally { exportando = false; }
 }
 
-// ---- overlay: fichas split-flap arriba a la derecha, click-through
+// ---- overlay: fichas split-flap en la esquina elegida (por defecto arriba a la derecha), click-through
+const burbujas = () => Burbujas.limpiar(ajustes.burbujas);
 function colocarOverlay() {
   const a = (HUMO ? screen.getAllDisplays().find(d => d.bounds.x < 0) || screen.getPrimaryDisplay() : screen.getPrimaryDisplay()).workArea; // en la prueba de humo: pantalla de la izquierda
-  overlay.setBounds({ x: a.x + a.width - W - 12, y: a.y + 12, width: W, height: Math.min(H, a.height - 24) });
+  const b = burbujas(), w = ANCHO[b.tamano] || W, h = Math.min(H, a.height - 24);
+  overlay.setBounds({ x: b.esquina.endsWith('izq') ? a.x + 12 : a.x + a.width - w - 12, y: b.esquina.startsWith('abajo') ? a.y + a.height - h - 12 : a.y + 12, width: w, height: h });
 }
 function crearOverlay() {
   overlay = new BrowserWindow({
@@ -147,17 +162,25 @@ ipcMain.handle('sync:etiquetas', async (_, l) => { // elegir qué etiquetas de O
   await promesaSync; return sincronizar();
 });
 ipcMain.handle('ajustes:formato', () => ajustes.formato === 'completo' ? 'completo' : 'adaptativo');
+const txt = (v, max) => typeof v === 'string' && v.length <= max ? v : undefined;
+const enlace = r => { const e = txt(r && r.eventoId, 400), i = txt(r && r.inicioEv, 400), c = txt(r && r.categoria, 60); return { ...(e && { eventoId: e }), ...(e && i && { inicioEv: i }), ...(c && { categoria: c }) }; }; // evento de Outlook al que sigue la alarma y su categoría
 ipcMain.handle('alarmas:crear', (_, r) => {
   const v = T.validar(r, Date.now()); if (!v.ok) return v;
   const color = r && /^#[0-9a-f]{6}$/i.test(r.color) ? r.color : undefined; // color de la etiqueta de Outlook (alarmas puestas desde la Agenda)
-  alarmas.push({ id: crypto.randomUUID(), creada: Date.now(), ...v.rec, ...(color && { color }), ...(r && r.deAgenda === true && { deAgenda: true }) }); guardar(); exportarOutlook(); return ok(); // deAgenda: ya existe el evento en Outlook, no se exporta
+  alarmas.push({ id: crypto.randomUUID(), creada: Date.now(), ...v.rec, ...(color && { color }), ...enlace(r), ...(r && r.deAgenda === true && { deAgenda: true }) }); guardar(); exportarOutlook(); return ok(); // deAgenda: ya existe el evento en Outlook, no se exporta
 });
 ipcMain.handle('alarmas:editar', (_, id, r) => {
   const i = alarmas.findIndex(a => a.id === id); if (i < 0) return { ok: false, error: 'Ya no existe' };
   const v = T.validar(r, Date.now()); if (!v.ok) return v;
-  const ant = alarmas[i], nueva = { id, creada: Date.now(), ...v.rec, ...(ant.color && { color: ant.color }), ...(ant.deAgenda && { deAgenda: true }) };
+  const ant = alarmas[i], nueva = { id, creada: Date.now(), ...v.rec, ...(ant.color && { color: ant.color }), ...enlace(ant), ...(ant.deAgenda && { deAgenda: true }) };
   if (ant.outlookId) { if (nueva.tipo === 'fecha') { nueva.outlookId = ant.outlookId; nueva.outlookHuella = ant.outlookHuella; } else borrarEnOutlook(ant.outlookId); }
   alarmas[i] = nueva; guardar(); exportarOutlook(); return ok();
+});
+ipcMain.handle('burbujas:leer', () => burbujas());
+ipcMain.handle('burbujas:guardar', (_, b) => { // aspecto de las fichas: se sanea, se guarda, se recoloca el overlay y se avisa a overlay y panel
+  const n = Burbujas.limpiar(b); ajustes.burbujas = n; escribir(AJUSTES, ajustes);
+  if (overlay && !overlay.isDestroyed()) colocarOverlay();
+  destinos().forEach(w => w.webContents.send('burbujas', n)); return n;
 });
 ipcMain.handle('alarmas:ocultar', (_, id) => {
   if (typeof id !== 'string' || !id.startsWith('outlook:') || id.length > 400) return { ok: false, error: 'No se puede quitar' };
@@ -186,6 +209,7 @@ function iniciar(o) { // llamar con la app lista; `ventanas()` devuelve las vent
   DATOS = path.join(DIR, 'alarmas.json'); AJUSTES = path.join(DIR, 'ajustes.json');
   const aj = leer(AJUSTES, {}); // de ahí solo lo nuestro; iniciarConWindows se ignora
   ['formato', 'ventanaDias', 'calendarioOutlook'].forEach(k => { if (aj[k] !== undefined) ajustes[k] = aj[k]; });
+  if (aj.burbujas && typeof aj.burbujas === 'object') ajustes.burbujas = Burbujas.limpiar(aj.burbujas);
   if (Array.isArray(aj.ocultas)) ajustes.ocultas = aj.ocultas.filter(x => typeof x === 'string');
   if (Array.isArray(aj.etiquetas)) ajustes.etiquetas = limpiarEtiquetas(aj.etiquetas);
   categorias = leer(path.join(DIR, 'categorias.json'), {});
@@ -219,4 +243,4 @@ function datosHumo() {
   guardar();
 }
 
-module.exports = { cuadroArriba, iniciar, descartar, sonando, sincronizar, menuItems, datosHumo, overlay: () => overlay };
+module.exports = { seguirOutlook, cuadroArriba, iniciar, descartar, sonando, sincronizar, menuItems, datosHumo, overlay: () => overlay };

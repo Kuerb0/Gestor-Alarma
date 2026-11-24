@@ -56,6 +56,9 @@ contextBridge.exposeInMainWorld('alarmas', {
   alCambiar: cb => ipcRenderer.on('alarmas', (_, l) => cb(l)),
   agenda: () => ipcRenderer.invoke('agenda:lista'), // eventos de la agenda (los que están pasando salen como cuadrados en el overlay)
   alAgenda: cb => ipcRenderer.on('agenda', (_, l) => cb(l)),
+  burbujas: () => ipcRenderer.invoke('burbujas:leer'), // aspecto de las fichas del overlay (forma, tamaño, cuántas, esquina)
+  guardarBurbujas: b => ipcRenderer.invoke('burbujas:guardar', b),
+  alBurbujas: cb => ipcRenderer.on('burbujas', (_, b) => cb(b)),
   silencioHasta: () => ipcRenderer.invoke('silencio:hasta'), // no molestar: hasta cuándo (ms desde 1970; 0 = no)
   alSilencio: cb => ipcRenderer.on('silencio', (_, h) => cb(h)),
 });

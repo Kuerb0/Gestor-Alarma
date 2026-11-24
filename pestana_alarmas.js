@@ -155,6 +155,20 @@
   $('al-etq-a').onclick = añadirEtq; $('al-etq-n').addEventListener('keydown', e => { if (e.key === 'Enter') añadirEtq(); });
   window.api && window.api.on('correo', r => { if (r && r.ok && Array.isArray(r.categorias)) { cats = r.categorias; pintarEtiquetas(); } });
 
+  // ---- aspecto de las burbujas del overlay: botones segmentados y números; cada cambio se guarda al momento (el overlay cambia en vivo)
+  let bur = null;
+  function pintarBurbujas() {
+    if (!bur) return;
+    document.querySelectorAll('#al-asp .asp-f[data-k]').forEach(g => g.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === bur[g.dataset.k])));
+    document.querySelectorAll('#al-asp input[data-k]').forEach(i => { if (document.activeElement !== i) i.value = bur[i.dataset.k]; });
+  }
+  const guardarBur = async cambio => { bur = await al.guardarBurbujas({ ...bur, ...cambio }); pintarBurbujas(); };
+  $('al-asp').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b) guardarBur({ [b.closest('.asp-f').dataset.k]: b.dataset.v }); });
+  $('al-asp').addEventListener('change', e => { if (e.target.dataset.k && e.target.type === 'number') guardarBur({ [e.target.dataset.k]: e.target.value }); });
+  $('as-reset').onclick = async () => { bur = await al.guardarBurbujas({}); pintarBurbujas(); };
+  al.burbujas().then(b => { bur = b; pintarBurbujas(); });
+  al.alBurbujas(b => { bur = b; pintarBurbujas(); });
+
   [[1, 'L'], [2, 'M'], [3, 'X'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']].forEach(([v, l]) => { // casillas de los días (0 = domingo)
     const lab = el('label', 'dia'), inp = document.createElement('input');
     inp.type = 'checkbox'; inp.value = v; lab.append(inp, el('span', '', l)); $('al-dias').append(lab);

@@ -1,4 +1,5 @@
-const MAX = 5, NOMBRE_MAX = 11, lista = document.getElementById('lista'), mas = document.getElementById('mas'), els = new Map();
+let MAX = 5, NOMBRE_MAX = 11; // ajustes de las burbujas (por defecto, como siempre); MAXQ más abajo
+const lista = document.getElementById('lista'), mas = document.getElementById('mas'), els = new Map();
 let datos = [], ultimoPitido = 0, ctx, formato = 'adaptativo';
 const SIN_SONIDO = new URLSearchParams(location.search).has('humo'); // la prueba de humo (npm run humo) no pita nunca
 let silencioHasta = 0; // «No molestar» de la bandeja: hasta esa hora (ms) no pita; las tarjetas siguen viéndose
@@ -80,7 +81,8 @@ function colorAgenda(a) {
   return e ? e.color : null;
 }
 // ---- agenda: cuadrado con borde del color de la etiqueta para el evento en curso (cuenta atrás hasta su fin, «−12:34») y, la hora anterior, hasta su inicio (borde discontinuo)
-const MAXQ = 6, elsQ = new Map();
+let MAXQ = 6;
+const elsQ = new Map();
 let agenda = [];
 function pintarAgenda(ahora) {
   const en = agenda.filter(e => e.cuadro !== false && (e.fin || e.todoDia) && (!e.todoDia || e.listada)).map(e => ({ ...e, i: +new Date(e.inicio), f: +new Date(e.fin || +new Date(e.inicio) + 864e5), k: e.titulo + '|' + e.inicio })).filter(e => e.i - (e.antes ?? 60) * 6e4 <= ahora && ahora < e.f && !(e.i > ahora && datos.some(a => a.tipo === 'fecha' && (!a.origen || a.origen === 'outlook') && norm(a.nombre) === norm(e.titulo) && Math.abs(a.objetivo - e.i) < 6e4))) // antes de empezar, si ya hay alarma de ese evento, no se duplica la ficha
@@ -97,6 +99,14 @@ function pintarAgenda(ahora) {
     return { e, p: 2, v: (pronto ? ev.i : ev.f) - ahora };
   });
 }
+function aplicarBurbujas(b) { // forma, tamaño y esquina como clases del body; cuántas fichas, cuántos cuadros y letras del nombre como variables
+  if (!b) return;
+  MAX = b.maxFichas; MAXQ = b.maxCuadros; NOMBRE_MAX = b.nombre;
+  document.body.className = ['f-' + b.forma, 't-' + b.tamano, b.esquina.startsWith('abajo') ? 'ab' : '', b.esquina.endsWith('izq') ? 'iz' : ''].filter(Boolean).join(' ');
+  pintar();
+}
+alarmas.burbujas().then(aplicarBurbujas);
+alarmas.alBurbujas(aplicarBurbujas);
 alarmas.agenda().then(l => { agenda = l; });
 alarmas.alAgenda(l => { agenda = l; });
 alarmas.lista().then(l => { datos = l; pintar(); });

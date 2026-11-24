@@ -41,6 +41,12 @@
       <div id="al-estado"></div>
       <details id="al-etq"><summary>Etiquetas de Outlook: alarma y/o evento arriba</summary><input id="al-etq-b" class="campo" type="search" placeholder="Buscar etiqueta…" aria-label="Buscar etiqueta"><div id="al-etq-l"></div><div id="al-etq-vacio" class="vacio" hidden>Ninguna etiqueta coincide</div>
         <div class="ev-fila"><input id="al-etq-n" class="campo" maxlength="60" placeholder="Otra etiqueta…" aria-label="Nombre de otra etiqueta"><button id="al-etq-a" class="btn-sec">Añadir</button></div></details>
+      <details id="al-asp"><summary>Aspecto de las burbujas</summary>
+        <div class="asp-f" role="group" aria-label="Forma" data-k="forma"><span>Forma</span><button type="button" class="ev-dur" data-v="pildora" aria-pressed="false">Píldora</button><button type="button" class="ev-dur" data-v="redondeada" aria-pressed="false">Redondeada</button><button type="button" class="ev-dur" data-v="cuadrada" aria-pressed="false">Cuadrada</button></div>
+        <div class="asp-f" role="group" aria-label="Tamaño" data-k="tamano"><span>Tamaño</span><button type="button" class="ev-dur" data-v="pequeno" aria-pressed="false">Pequeño</button><button type="button" class="ev-dur" data-v="mediano" aria-pressed="false">Mediano</button><button type="button" class="ev-dur" data-v="grande" aria-pressed="false">Grande</button></div>
+        <div class="asp-f" role="group" aria-label="Esquina" data-k="esquina"><span>Esquina</span><button type="button" class="ev-dur" data-v="arriba-izq" aria-pressed="false">↖ Arriba izq.</button><button type="button" class="ev-dur" data-v="arriba-der" aria-pressed="false">↗ Arriba der.</button><button type="button" class="ev-dur" data-v="abajo-izq" aria-pressed="false">↙ Abajo izq.</button><button type="button" class="ev-dur" data-v="abajo-der" aria-pressed="false">↘ Abajo der.</button></div>
+        <div class="asp-f"><label>Máx. fichas <input id="as-fichas" class="campo" type="number" min="1" max="10" data-k="maxFichas"></label><label>Máx. cuadros <input id="as-cuadros" class="campo" type="number" min="0" max="10" data-k="maxCuadros"></label><label>Letras del nombre <input id="as-nombre" class="campo" type="number" min="6" max="24" data-k="nombre"></label></div>
+        <div class="asp-f"><button type="button" id="as-reset" class="btn-sec">Restablecer</button></div></details>
       <div id="al-lista"></div>
     </section>
     <section class="pestana" id="p-correo" role="tabpanel" aria-labelledby="t-correo" hidden>
