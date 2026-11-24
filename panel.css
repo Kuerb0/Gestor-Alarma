@@ -262,11 +262,19 @@ select.campo option { background: #2b2f38; color: #fff; }
 .wev .h { flex: none; width: 86px; color: var(--sec); } .wev .tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wev .tt small { display: block; color: var(--sec); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
 .wtodo { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; } #w .wtodo { padding-right: 76px; } .wchip { --c: var(--sec); padding: 1px 9px; border-radius: 10px; font-size: 11px; background: color-mix(in srgb, var(--c) 35%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 65%, transparent); }
-.wh { width: 100%; height: auto; display: block; overflow: visible; filter: drop-shadow(0 1px 2px var(--ts)); }
-.wh-l { stroke: var(--b2); stroke-width: 1; } .wh-h { fill: var(--sec); font-size: 10px; text-anchor: end; }
-.wh-b rect { fill-opacity: .38; stroke-width: 1.2; } .wh-b rect.sc { fill: var(--acento); stroke: var(--acento); }
-.wh-b text { fill: var(--txt); font-size: 11px; } .wh-b text.s { fill: var(--sec); font-size: 10px; } .wh-b.pas { opacity: .5; }
-.wh-ya { stroke: #ff6b5b; stroke-width: 1.5; } .wh-yc { fill: #ff6b5b; }
+/* agenda por horas: cada hora mide 48 px (en el widget con alto a mano, al menos 48 px: las horas se estiran para llenar el cuadro y, si no caben, se desplaza). Letra como la lista (.wev).
+   Nada se tapa: la hora siempre se ve y el título ocupa las líneas que caben (container queries sobre el alto del bloque); el texto entero va en el title */
+.wh { --hr: 48px; position: relative; height: calc(var(--nh, 12) * var(--hr)); flex: none; margin: 2px 0 4px; }
+#w.fijo #w-c:has(> .wh) { display: flex; flex-direction: column; } #w.fijo .wh { flex: 1 0 auto; height: auto; min-height: calc(var(--nh, 12) * 48px); }
+.wh-l { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--rej, var(--b2)); }
+.wh-h { position: absolute; left: 0; top: 3px; width: 38px; color: var(--sec); font-size: 11px; font-variant-numeric: tabular-nums; }
+.wh-ev { position: absolute; top: 0; bottom: 0; left: 44px; right: 0; }
+.wh-b { --c: var(--acento); position: absolute; } /* posición en % (colorea); el aspecto va en .wh-in, con 1-2 px de aire para que dos bloques seguidos no se peguen */
+.wh-in { container-type: size; position: absolute; inset: 1px 2px; overflow: hidden; display: flex; flex-direction: column; gap: 1px; padding: 4px 9px; border-radius: 12px; font-size: 12.5px; line-height: 1.25; color: var(--txt); background: color-mix(in srgb, var(--c) 26%, var(--vidrio, transparent)); border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); }
+.wh-b .tt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; font-weight: 500; flex: none; } .wh-b .s { flex: none; color: var(--sec); font-size: 11px; white-space: nowrap; } .wh-b small { flex: none; color: var(--sec); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@container (max-height: 76px) { .wh-b .tt { -webkit-line-clamp: 2; } } @container (max-height: 61px) { .wh-b small { display: none; } } @container (max-height: 45px) { .wh-b .tt { -webkit-line-clamp: 1; } }
+.wh-b.corto .wh-in { flex-direction: row; align-items: center; gap: 6px; padding-top: 0; padding-bottom: 0; } .wh-b.corto .tt { display: block; flex: 1; min-width: 0; text-overflow: ellipsis; white-space: nowrap; } .wh-b.corto small { display: none; } .wh-b.corto .s { order: -1; }
+.wh-ya { position: absolute; left: 40px; right: 0; height: 0; border-top: 2px solid #ff6b5b; z-index: 2; pointer-events: none; } .wh-ya::before { content: ''; position: absolute; left: -4px; top: -5px; width: 8px; height: 8px; border-radius: 50%; background: #ff6b5b; }
 .etq select.campo { width: auto; padding: 3px 6px; }
 #al-etq-b { margin: 6px 0 4px; padding: 5px 10px; } .etq[hidden] { display: none; }
 /* uso */
@@ -327,12 +335,12 @@ select.campo option { background: #2b2f38; color: #fff; }
   --velo: rgba(0,0,0,.8); --halo: none; --svgf: none; --trazo: color-mix(in srgb, var(--acento) 60%, #fff); --glow: none; --rej: rgba(255,255,255,.8); --ll: 1;
   --pas: .85; --pasll: .75; --pasw: .85; --pista: rgba(255,255,255,.3); --pista-w: rgba(255,255,255,.3); --pout: 1px solid rgba(255,255,255,.8); --barfondo: rgba(0,0,0,.8); }
 [data-tema] .pas { opacity: var(--pas); } [data-tema] .fr-ll { opacity: var(--ll); } [data-tema] .fr-ll.pas { opacity: var(--pasll); } [data-tema] .wh-b.pas { opacity: var(--pasw); }
-[data-tema] .fr-g { filter: var(--svgf); } [data-tema] .wh { filter: var(--svgc, none); }
+[data-tema] .fr-g { filter: var(--svgf); }
 [data-tema] .fr-l { stroke: var(--trazo); filter: var(--glow, drop-shadow(0 0 4px var(--ac-v))); } [data-tema] .fr-ya, [data-tema] .fr-k { stroke: var(--trazo); } [data-tema] .fr-p { fill: var(--trazo); }
-[data-tema] .fr-e, [data-tema] .wh-l { stroke: var(--rej, var(--b2)); }
+[data-tema] .fr-e { stroke: var(--rej, var(--b2)); }
 [data-tema] svg text:not(.fr-i) { paint-order: stroke; stroke: var(--tstroke, none); stroke-width: var(--tsw, 0); stroke-linejoin: round; } /* contorno oscuro del texto SVG (claroscuro) */
 [data-tema] .barra progress { outline: var(--pout, none); outline-offset: 0; }
 [data-tema=contraste] .fr-l { stroke-width: 3.3px; } [data-tema=contraste] .fr-ya { stroke-width: 1.8px; } [data-tema=contraste] .fr-hoy { stroke-width: 3px; opacity: .7; } [data-tema=contraste] .fr-k { stroke-width: 3px; }
-[data-tema=contraste] .fr-e, [data-tema=contraste] .wh-l { stroke-width: 1.5px; } [data-tema=contraste] .wh-ya { stroke-width: 2.25px; } [data-tema=contraste] .wh-b rect { fill-opacity: .6; stroke-width: 1.8px; }
-[data-tema=contraste] .fr-t, [data-tema=contraste] .fr-h, [data-tema=contraste] .wh-h, [data-tema=contraste] .wh-b text { font-weight: 700; }
+[data-tema=contraste] .fr-e { stroke-width: 1.5px; } [data-tema=contraste] .wh-l { border-top-width: 1.5px; } [data-tema=contraste] .wh-ya { border-top-width: 3px; } [data-tema=contraste] .wh-in { background: color-mix(in srgb, var(--c) 55%, var(--velo, transparent)); border-width: 2px; }
+[data-tema=contraste] .fr-t, [data-tema=contraste] .fr-h, [data-tema=contraste] .wh-h, [data-tema=contraste] .wh-b { font-weight: 700; }
 .wg-v[data-tema] { text-shadow: var(--halo); } /* vista previa de la galería */

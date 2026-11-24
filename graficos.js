@@ -149,7 +149,11 @@ function htmlSistema(sis, bateria, o = {}) { // `o` (opcional, solo el widget): 
 // modo 'eventos': lista por días (ndias) · modo 'horas': hoy en una línea de tiempo vertical de h0 a h1 horas (fijas, editables), con los eventos solapados en columnas.
 // todo = false oculta los de todo el día; lugar = false oculta el lugar. Los colores van en data-c: después de poner el HTML se llama a colorea(raiz) (CSP: sin style inline).
 const HEX = /^#[0-9a-f]{6}$/i, hhmm2 = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-const colorea = raiz => raiz.querySelectorAll('[data-c]').forEach(e => e.style.setProperty('--c', e.dataset.c));
+const colorea = raiz => { // CSP sin style inline: los colores (data-c), el nº de horas (data-nh) y las posiciones en % de la agenda por horas (data-y/h/x/w) se ponen aquí
+  raiz.querySelectorAll('[data-c]').forEach(e => e.style.setProperty('--c', e.dataset.c));
+  raiz.querySelectorAll('[data-nh]').forEach(e => e.style.setProperty('--nh', e.dataset.nh));
+  raiz.querySelectorAll('.wh [data-y]').forEach(e => { const d = e.dataset; e.style.top = d.y + '%'; if (d.h) e.style.height = d.h + '%'; if (d.x) { e.style.left = d.x + '%'; e.style.width = d.w + '%'; } });
+};
 const maxDiaAg = r => clamp(((r && r.dias) || 14) - 1, 0, 13); // último día al que se puede ir con las flechas (el widget guarda el día elegido y lo ajusta con esto)
 function htmlAgenda(r, o = {}, ahora = new Date()) {
   if (!r || !r.ok) return '<div class="vacio">Agenda no disponible</div>';
@@ -160,23 +164,21 @@ function htmlAgenda(r, o = {}, ahora = new Date()) {
   const delDia = k => ev.filter(e => e.i < dia(k + 1) && Math.max(e.f, e.i + 1) > dia(k) && (o.todo !== false || !e.todoDia));
   const nom = k => k === 0 ? 'Hoy' : k === 1 ? 'Mañana' : new Date(dia(k)).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }).replace(/^./, c => c.toUpperCase());
   const nav = o.nav === false ? '' : `<div class="fr-nav"><button class="fr-b" data-d="-1" aria-label="Día anterior"${sel ? '' : ' disabled'}>‹</button><span aria-live="polite">${esc(nom(sel))}</span><button class="fr-b" data-d="1" aria-label="Día siguiente"${sel < maxDiaAg(r) ? '' : ' disabled'}>›</button></div>`;
-  if (o.modo === 'horas') {
-    const [h0, h1] = rangoH(o, 8, 20), nh = h1 - h0, nowH = (now - dia(sel)) / 36e5, RH = Math.min(30, Math.floor(420 / nh)), X0 = 44, H = nh * RH; // ventana fija de h0 a h1 (editable)
+  if (o.modo === 'horas') { // HTML (no SVG): letra real como la lista; las posiciones van en % del alto (data-*, colorea las aplica) y el alto lo pone CSS con --nh
+    const [h0, h1] = rangoH(o, 8, 20), nh = h1 - h0, nowH = (now - dia(sel)) / 36e5, pc = h => ((h - h0) / nh * 100).toFixed(3); // ventana fija de h0 a h1 (editable)
     const hoy = delDia(sel), todos = hoy.filter(e => e.todoDia), con = hoy.filter(e => !e.todoDia).map(e => ({ ...e, s: Math.max(h0, (e.i - dia(sel)) / 36e5), t: Math.min(h1, (e.f - dia(sel)) / 36e5) })).filter(e => e.t > e.s);
     let fin = -1, col = [], grupo = []; const grupos = []; // columnas: cada evento a la primera libre; el ancho lo da el máximo de columnas de su grupo de solapados
     con.forEach(e => { if (e.s >= fin) { grupos.push(grupo); grupo = []; col = []; fin = -1; } let c = col.findIndex(x => x <= e.s); if (c < 0) c = col.length; col[c] = e.t; e.c = c; grupo.push(e); fin = Math.max(fin, e.t); });
     grupos.push(grupo); grupos.forEach(g => { const n = Math.max(1, ...g.map(e => e.c + 1)); g.forEach(e => e.n = n); });
-    const ancho = W - X0 - PX, y = h => (h - h0) * RH;
-    const rej = Array.from({ length: nh + 1 }, (_, k) => `<line class="wh-l" x1="${X0}" x2="${W - PX}" y1="${k * RH}" y2="${k * RH}"/>${k < nh ? `<text class="wh-h" x="${X0 - 6}" y="${k * RH + 11}">${String(h0 + k).padStart(2, '0')}:00</text>` : ''}`).join('');
+    const rej = Array.from({ length: nh }, (_, k) => `<div class="wh-l" data-y="${pc(h0 + k)}"><span class="wh-h">${String(h0 + k).padStart(2, '0')}:00</span></div>`).join('');
     const bloques = con.map(e => {
-      const x = X0 + e.c * ancho / e.n + 1, w = ancho / e.n - 2, top = y(e.s) + 1, alto = Math.max(15, (e.t - e.s) * RH - 2), c = HEX.test(e.color) ? e.color : '', max = Math.max(3, Math.floor((w - 10) / 6));
-      const t = String(e.titulo); const tt = t.length > max ? t.slice(0, max - 1) + '…' : t;
-      return `<g class="wh-b${e.f < now ? ' pas' : ''}"><rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${alto.toFixed(1)}" rx="8"${c ? ` fill="${c}" stroke="${c}"` : ' class="sc"'}/>` +
-        `<text x="${(x + 7).toFixed(1)}" y="${(top + 11).toFixed(1)}">${esc(tt)}</text>${alto >= 30 ? `<text class="s" x="${(x + 7).toFixed(1)}" y="${(top + 24).toFixed(1)}">${hhmm2(new Date(e.i))}–${hhmm2(new Date(e.f))}</text>` : ''}</g>`;
+      const hora = hhmm2(new Date(e.i)) + '–' + hhmm2(new Date(e.f)), dur = e.t - e.s, lug = o.lugar !== false && e.lugar ? `<small>${esc(e.lugar)}</small>` : '';
+      return `<div class="wh-b${e.f < now ? ' pas' : ''}${dur < .75 ? ' corto' : ''}${HEX.test(e.color) ? '' : ' sc'}"${cdata(e)} data-y="${pc(e.s)}" data-h="${(dur / nh * 100).toFixed(3)}" data-x="${(e.c / e.n * 100).toFixed(3)}" data-w="${(100 / e.n).toFixed(3)}" title="${esc(hora + ' · ' + e.titulo + (e.lugar ? ' · ' + e.lugar : ''))}">` +
+        `<div class="wh-in"><span class="tt">${esc(e.titulo)}</span><span class="s">${hora}</span>${lug}</div></div>`;
     }).join('');
-    const ya = nowH >= h0 && nowH <= h1 ? `<line class="wh-ya" x1="${X0 - 4}" x2="${W - PX}" y1="${y(nowH).toFixed(1)}" y2="${y(nowH).toFixed(1)}"/><circle class="wh-yc" cx="${X0 - 4}" cy="${y(nowH).toFixed(1)}" r="3.5"/>` : '';
+    const ya = nowH >= h0 && nowH <= h1 ? `<div class="wh-ya" data-y="${pc(nowH)}"></div>` : '';
     const chips = o.todo !== false && todos.length ? `<div class="wtodo">${todos.map(e => `<span class="wchip"${cdata(e)}>${esc(e.titulo)}</span>`).join('')}</div>` : '';
-    return nav + chips + `<svg class="wh" viewBox="0 0 ${W} ${H}" role="img" aria-label="Agenda de ${esc(nom(sel).toLowerCase())}, de ${h0} a ${h1} h">${rej}${bloques}${ya}</svg>`;
+    return nav + chips + `<div class="wh" data-nh="${nh}" role="img" aria-label="Agenda de ${esc(nom(sel).toLowerCase())}, de ${h0} a ${h1} h">${rej}<div class="wh-ev">${bloques}</div>${ya}</div>`;
   }
   const nd = [1, 3, 7].includes(o.ndias) ? o.ndias : 3;
   let h = '';
