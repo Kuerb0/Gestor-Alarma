@@ -3,12 +3,14 @@ const fs = require('fs'), path = require('path'), { spawn, execFile } = require(
 const Act = require('./actualizar'); // versiones nuevas en GitHub Releases
 const Salida = require('./outlook_salida'), limpiar = c => c && Array.isArray(c.agenda) ? { ...c, agenda: Salida.sinCopiasAlarma(c.agenda) } : c; // sin las copias «Alarma» que el Gestor exportó
 const PosW = require('./posicion_widgets'); // posición/tamaño guardados de los widgets: la función pura que decide a dónde devolverlos
+const Ocultos = require('./ocultos'); // estado compartido «widgets escondidos» (Ctrl+Alt+J) con Consumo y Bancos: fichero %LOCALAPPDATA%\Kuerb0\widgets-ocultos.json
 const TemaFondo = require('./tema_fondo'); // tema de contraste automático de los widgets (mide el fondo del escritorio)
 const Alarmas = require('./alarmas'); // motor del antiguo Gestor-Alarmas (overlay, datos, Post-It/Outlook)
 
 const HUMO = process.argv.includes('--humo'); // prueba: userData temporal, datos inventados, captura y salir
 const ICONO = path.join(__dirname, 'assets', 'icon.png');
 const PW = 380; // ancho del panel
+let widgetsOcultos = false; // Ctrl+Alt+J: los widgets del escritorio están escondidos (ventanas ocultas, no cerradas)
 const widgets = new Map(); // widgets del escritorio abiertos: id -> BrowserWindow (varios por tipo; ver tipoDe)
 let AJUSTES, ajustes = { fijado: false, iniciarConWindows: true, lugar: null }, win, raya, tray, anim = 0, acento = '#4a9eff';
 nativeTheme.themeSource = HUMO && process.env.PANEL_TEMA === 'light' ? 'light' : 'system'; // el CSS sigue prefers-color-scheme
@@ -218,7 +220,7 @@ function aplicarCompleta() {
   if (completa && abierto && !ajustes.fijado) poner(false);
   if (raya && !raya.isDestroyed()) completa || abierto ? raya.hide() : raya.showInactive();
   verFichas();
-  widgets.forEach(w => !w.isDestroyed() && (completa ? w.hide() : w.showInactive())); // al salir de pantalla completa se vuelve a medir el fondo y se devuelven a su sitio (los juegos cambian la resolución)
+  widgets.forEach(w => !w.isDestroyed() && (completa || widgetsOcultos ? w.hide() : w.showInactive())); // al salir de pantalla completa se vuelve a medir el fondo y se devuelven a su sitio (los juegos cambian la resolución)
   if (!completa) { medirTodos(); programarRecolocar(); }
   pintarAct();
 }
@@ -281,6 +283,26 @@ function posicionWidget(id) { // la guardada si sigue dentro de alguna pantalla;
 // Lo guardado manda: la posición solo se guarda cuando el usuario suelta el widget (widget:mover / widget:tam con fin) o al duplicar; abrir y cerrar solo tocan «abierto».
 function guardarPosWidget(id) { const w = widgets.get(id); if (!w || w.isDestroyed()) return; const b = w.getBounds(); ponGw(id, { x: b.x, y: b.y }); guardarAjustes(); }
 // Devuelve cada widget vivo a su posición y tamaño guardados (Windows los mueve/reescala al cambiar pantallas, resolución o al despertar). No toca ajustes.
+// ---- Ctrl+Alt+J: esconde o devuelve los widgets del escritorio a la vez que los de Consumo y Bancos (lo que se comparte es el estado, en un fichero)
+function aplicarOcultos(v) { // poner (no alternar): idempotente
+  widgetsOcultos = !!v;
+  widgets.forEach(w => !w.isDestroyed() && (completa || widgetsOcultos ? w.hide() : w.showInactive()));
+  if (!widgetsOcultos && !completa) medirTodos();
+  tray && tray.setContextMenu(menu());
+}
+function ponerOcultos(v) { Ocultos.escribir(v, 'gestoralarma'); aplicarOcultos(v); } // escribe el estado compartido y lo aplica
+function iniciarOcultos() {
+  if (HUMO) Ocultos.fijarRuta(path.join(app.getPath('userData'), 'widgets-ocultos.json')); // la prueba no toca el fichero real
+  Ocultos.vigilar(v => { if (v !== widgetsOcultos) aplicarOcultos(v); }, 300);
+  if (HUMO) return;
+  let avisado = false;
+  const registrar = () => {
+    if (globalShortcut.register('CommandOrControl+Alt+J', () => ponerOcultos(!Ocultos.leer()))) return;
+    if (!avisado) { avisado = true; log('Ctrl+Alt+J lo tiene otra app: se reintenta cada 5 s (el estado se sigue compartiendo por fichero)'); }
+    setTimeout(registrar, 5000);
+  };
+  registrar();
+}
 function recolocarWidgets(forzar) {
   if (HUMO && !forzar) return;
   const areas = areasPantallas();
@@ -316,7 +338,7 @@ function ponerWidget(id, v, c) { // abre (v) o quita el widget `id`; `c` (opcion
   widgets.set(id, w);
   cargarWidget(w, id);
   w.webContents.on('did-finish-load', () => { ['tema', 'meteo', 'sistema', 'correo', 'notas'].forEach(c => cache[c] !== undefined && w.webContents.send(c, cache[c])); enviarTemaW(id); medirLuego(id, 900); });
-  w.once('ready-to-show', () => { if (!completa) w.showInactive(); });
+  w.once('ready-to-show', () => { if (!completa && !widgetsOcultos) w.showInactive(); });
   w.on('moved', () => { if (widgets.get(id) === w) medirLuego(id); }); // no se guarda: puede haberla movido Windows; el arrastre del usuario se guarda en widget:mover
   w.on('resized', () => { if (widgets.get(id) === w) medirLuego(id); });
   w.on('closed', () => { if (widgets.get(id) === w) { widgets.delete(id); pintarWidgets(); } });
@@ -326,6 +348,7 @@ function ponerWidget(id, v, c) { // abre (v) o quita el widget `id`; `c` (opcion
 }
 function nuevoWidget(tipo, c, desde) { // añade otro widget de `tipo`; `desde`: id del que se duplica (copia ajustes, estilo y tamaño, y sale desplazado)
   if (!WIDGETS[tipo]) return;
+  if (widgetsOcultos) ponerOcultos(false); // sacar uno a mano con los widgets escondidos: vuelven todos (aquí y en las otras apps)
   const id = !widgets.has(tipo) ? tipo : tipo + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   if (id !== tipo) ajustes.widgets = { ...ajustes.widgets, [id]: { tipo } };
   if (desde && widgets.has(desde)) { const o = gw(desde), b = widgets.get(desde).getBounds(); ponGw(id, { cfg: o.cfg, estilo: o.estilo, tema: o.tema, ancho: o.ancho, alto: o.alto, x: b.x + 28, y: b.y + 28 }); }
@@ -385,12 +408,12 @@ const pausaMs = ms => new Promise(r => setTimeout(r, ms));
 let midiendo = Promise.resolve(); // las mediciones van de una en una (comparten la captura de pantalla y la opacidad de las ventanas)
 function medirLuego(id, ms = 600) { // debounce por widget; solo los que están en automático
   clearTimeout(medirT.get(id));
-  if (HUMO || temaDe(id) !== 'auto') { medirT.delete(id); return; }
+  if (HUMO || widgetsOcultos || temaDe(id) !== 'auto') { medirT.delete(id); return; } // escondidos no se miden (medir los enseñaría un instante)
   medirT.set(id, setTimeout(() => { medirT.delete(id); midiendo = midiendo.then(() => medirFondo(id)).catch(e => log('tema: ' + (e && e.message || e))); }, ms));
 }
 async function medirFondo(id) {
   const w = widgets.get(id);
-  if (HUMO || completa || !w || w.isDestroyed() || temaDe(id) !== 'auto' || !w.isVisible()) return;
+  if (HUMO || completa || widgetsOcultos || !w || w.isDestroyed() || temaDe(id) !== 'auto' || !w.isVisible()) return;
   let tema = 'claroscuro', opacidad = w.getOpacity();
   try {
     w.setOpacity(0); await pausaMs(120); // da tiempo a que el escritorio se repinte sin el widget
@@ -463,6 +486,7 @@ const menu = () => Menu.buildFromTemplate([
   { type: 'separator' },
   ...Alarmas.menuItems(),
   { label: 'Ocultar alarmas y eventos (Ctrl+Alt+H)', type: 'checkbox', checked: fichasOcultas, click: i => ocultarFichas(i.checked) },
+  { label: 'Esconder widgets (Ctrl+Alt+J)', type: 'checkbox', checked: widgetsOcultos, click: i => ponerOcultos(i.checked) },
   { type: 'separator' },
   { label: silenciando() ? `No molestar · hasta las ${horaSilencio()}` : 'No molestar', submenu: [
     { label: '30 minutos', click: () => silenciar(30) },
@@ -482,7 +506,7 @@ const menu = () => Menu.buildFromTemplate([
 ]);
 function crearBandeja() {
   tray = new Tray(nativeImage.createFromPath(ICONO).resize({ width: 16, height: 16 }));
-  tray.setToolTip('Gestor-Alarma · Ctrl+Alt+P abrir/cerrar · Ctrl+Alt+A nueva alarma · Ctrl+Alt+D descartar · Ctrl+Alt+H ocultar alarmas');
+  tray.setToolTip('Gestor-Alarma · Ctrl+Alt+P abrir/cerrar · Ctrl+Alt+A nueva alarma · Ctrl+Alt+D descartar · Ctrl+Alt+H ocultar alarmas · Ctrl+Alt+J esconder widgets');
   tray.setContextMenu(menu());
   tray.on('click', () => abierto ? cerrar() : abrir());
 }
@@ -641,9 +665,10 @@ app.whenReady().then(async () => {
   setInterval(recolocarWidgets, 30000);
   setInterval(sondear, 80);
   cache.notas = leerNotas(); // para que los widgets de Notas la tengan al abrirse
-  if (HUMO) return humo().catch(e => { console.log('HUMO FALLA\nexcepción: ' + (e && e.stack || e)); app.exit(1); }); // si la prueba lanza, sale en vez de quedarse colgada
+  if (HUMO) { iniciarOcultos(); return humo().catch(e => { console.log('HUMO FALLA\nexcepción: ' + (e && e.stack || e)); app.exit(1); }); } // si la prueba lanza, sale en vez de quedarse colgada
   vigilarCompleta();
   Object.keys(ajustes.widgets || {}).forEach(id => gw(id).abierto && ponerWidget(id, true));
+  aplicarOcultos(Ocultos.leer()); iniciarOcultos(); // tras restaurar los widgets: si el estado compartido está en «escondidos», salen escondidos
   estado(); if (ajustes.fijado) abrir();
   cargarCacheCorreo(); asegurarOutlook(); // primero lo guardado, luego se abre Outlook si hace falta (esa función ya hace la primera lectura al terminar)
   actualizar();
@@ -817,6 +842,18 @@ async function humo() {
   await js(win, `document.querySelector('button[data-tab="sistema"]').click()`); await esp(300); // la galería se vacía al salir de su pestaña
   ponerWidget('tiempo', true); ponerWidget('sistema', true); await esp(1200);
   const wt = widgets.get('tiempo'), ws = widgets.get('sistema');
+  { // Ctrl+Alt+J: poner escondidos oculta los widgets sin cerrarlos; devolver los enseña; también por el fichero compartido (ruta temporal)
+    aplicarOcultos(true);
+    if (!widgetsOcultos || [...widgets.values()].some(w => w.isVisible())) fallos.push('Ctrl+Alt+J: esconder no oculta los widgets');
+    if (widgets.size < 2) fallos.push('Ctrl+Alt+J: esconder cierra widgets');
+    aplicarOcultos(false);
+    if (widgetsOcultos || [...widgets.values()].some(w => !w.isVisible())) fallos.push('Ctrl+Alt+J: devolver no enseña los widgets');
+    Ocultos.escribir(true, 'humo'); await esp(900);
+    if (!widgetsOcultos || [...widgets.values()].some(w => w.isVisible())) fallos.push('Ctrl+Alt+J: el fichero compartido no esconde los widgets');
+    nuevoWidget('tiempo'); await esp(900); // sacar uno a mano con el estado escondido: escribe false y devuelve todos
+    if (widgetsOcultos || Ocultos.leer() || [...widgets.values()].some(w => !w.isVisible())) fallos.push('Ctrl+Alt+J: sacar un widget a mano no devuelve los demás');
+    abiertosDe('tiempo').filter(id => id !== 'tiempo').forEach(id => ponerWidget(id, false)); await esp(200);
+  }
   if (!wt || !ws) fallos.push('widgets: no se abren');
   else {
     if (await n(wt, '.fr-g') !== 1) fallos.push('widget Tiempo: sin gráfico');
