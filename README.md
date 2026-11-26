@@ -65,6 +65,7 @@ otas.json`.
 
 ## Desarrollo
 - `npm install`, `npm start`.
+- Protección contra la virtualización MSIX (`virtualizacion.js`): si la app se arranca desde la app de escritorio de Claude y hereda su AppData virtual, se relanza sola fuera con `explorer.exe` (`--relanzado`; el relanzado reintenta la instancia única ~5 s). No actúa con `--humo`.
 - `npm test`: fuentes, `tiempo.js`, `puente.js`, `outlook_salida.js` (incluye `reconciliar`), `burbujas.js`, `actualizar.js`, `meteo.js` y `tema_fondo.js` y `posicion_widgets.js` y `ocultos.js` (estado compartido de Ctrl+Alt+J) (tema automático de los widgets con bitmaps sintéticos) y `htmlAlarmas` (widget de Alarmas). `npm run humo`: abre el panel y el overlay con datos inventados, recorre las pestañas, guarda capturas en `%TEMP%\panel-humo` (`panel-<pestaña>.png`, `overlay.png`) y comprueba el DOM (`HUMO OK`). No emite sonido.
 - Empaquetado: `python C:\Github\herramientas-apps\construir.py exe` (usa `app.json`).
 

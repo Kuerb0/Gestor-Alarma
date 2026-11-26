@@ -21,9 +21,43 @@ const LOG = path.join(app.getPath('userData'), 'panel.log');
 const log = m => { try { if (fs.existsSync(LOG) && fs.statSync(LOG).size > 2e5) fs.renameSync(LOG, LOG + '.old'); fs.appendFileSync(LOG, new Date().toISOString() + ' ' + m + '\n'); } catch {} };
 process.on('uncaughtException', e => log('ERROR ' + (e && e.stack || e)));
 process.on('unhandledRejection', e => log('RECHAZO ' + (e && e.stack || e)));
-log('inicio pid=' + process.pid + ' args=' + process.argv.slice(1).join(' '));
-if (!app.requestSingleInstanceLock()) { log('ya hay otra instancia: salgo'); app.quit(); }
-app.on('quit', (_, c) => log('salida código=' + c));
+// ---- Virtualización por paquete MSIX (la app de escritorio de Claude): si arrancamos heredando su AppData virtual, nos relanzamos fuera con explorer.
+// Lo escrito en %APPDATA%\panel iría a Packages\Claude_…\LocalCache y el resto de Windows no lo vería. Sin registrar nada aquí: escribir crearía la copia virtual.
+const RELANZADO = process.argv.includes('--relanzado');
+let relanzandoFuera = false;
+if (process.platform === 'win32' && !HUMO) {
+  try {
+    const { detectarVirtualizacion, argumentosRelanzar } = require('./virtualizacion');
+    const paquete = detectarVirtualizacion({ userData: app.getPath('userData'), localAppData: process.env.LOCALAPPDATA });
+    if (!paquete && RELANZADO) {
+      log('relanzado fuera del paquete de Claude (estaba virtualizado)');
+    } else if (paquete && RELANZADO) {
+      log('sigue virtualizado por un paquete (' + paquete + ') aunque viene relanzado: se continúa sin relanzar');
+    } else if (paquete) {
+      const comillas = a => (/[\s"]/.test(a) ? '"' + a.replace(/"/g, '\\"') + '"' : a);
+      const lnk = path.join(require('os').tmpdir(), 'gestor-alarma-relanzar.lnk');
+      const ok = shell.writeShortcutLink(lnk, 'create', { target: process.execPath, args: argumentosRelanzar(process.argv).map(comillas).join(' '), cwd: __dirname });
+      if (!ok) throw new Error('no se pudo crear el acceso directo de relanzado');
+      spawn('explorer.exe', [lnk], { detached: true, stdio: 'ignore' }).unref();
+      relanzandoFuera = true;
+      app.exit(0);
+    }
+  } catch (e) { log('no se pudo relanzar fuera del paquete: ' + (e && e.message)); }
+}
+if (!relanzandoFuera) {
+  log('inicio pid=' + process.pid + ' args=' + process.argv.slice(1).join(' '));
+  app.on('quit', (_, c) => log('salida código=' + c));
+}
+// Instancia única. La copia relanzada reintenta ~5 s: la instancia anterior puede estar terminando de salir.
+const bloqueoListo = relanzandoFuera ? Promise.resolve(false) : new Promise(res => {
+  if (app.requestSingleInstanceLock()) return res(true);
+  if (!RELANZADO) { log('ya hay otra instancia: salgo'); app.quit(); return res(false); }
+  let n = 0;
+  const t = setInterval(() => {
+    if (app.requestSingleInstanceLock()) { clearInterval(t); res(true); }
+    else if (++n >= 10) { clearInterval(t); log('ya hay otra instancia (tras reintentar): salgo'); app.quit(); res(false); }
+  }, 500);
+});
 app.on('second-instance', () => abrir());
 app.on('window-all-closed', () => {}); // vive en la bandeja
 
@@ -639,6 +673,7 @@ ipcMain.on('actualizacion:instalar', instalarAct);
 ipcMain.on('actualizacion:tarde', () => { if (nueva && !ocupado) { ajustes.masTarde = nueva.version; guardarAjustes(); pintarAct(); } });
 
 app.whenReady().then(async () => {
+  if (!(await bloqueoListo)) return; // relanzando fuera del paquete, o ya hay otra instancia
   AJUSTES = path.join(app.getPath('userData'), 'ajustes.json');
   try { ajustes = { ...ajustes, ...JSON.parse(fs.readFileSync(AJUSTES, 'utf8')) }; } catch {}
   crearVentana();
