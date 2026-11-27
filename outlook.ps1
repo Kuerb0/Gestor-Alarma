@@ -20,7 +20,10 @@ $paleta = @{1='#e5533d';2='#f08c2e';3='#f4b183';4='#e0c341';5='#3fa34d';6='#2ec4
 try { $ol = [Runtime.InteropServices.Marshal]::GetActiveObject('Outlook.Application') }
 catch {
   if (-not (Test-Path 'Registry::HKEY_CLASSES_ROOT\Outlook.Application')) { exit 4 }
-  exit 3
+  # Outlook puede estar abierto pero sin registrarse en la tabla de objetos activos (MK_E_UNAVAILABLE, p. ej. si lo lanzó otra app): se conecta por COM.
+  # Solo si el proceso existe: si no, New-Object lo arrancaría escondido.
+  if (-not (Get-Process OUTLOOK -ErrorAction SilentlyContinue)) { exit 3 }
+  try { $ol = New-Object -ComObject Outlook.Application } catch { exit 3 }
 }
 try {
   $ns = $ol.GetNamespace('MAPI')
@@ -31,7 +34,7 @@ try {
   }
 
   if ($Leidos) {
-    $ids = @(Get-Content -LiteralPath $Leidos -Raw -Encoding UTF8 | ConvertFrom-Json); $hechos = 0; $fallos = 0
+    $ids = @(Get-Content -LiteralPath $Leidos -Raw -Encoding UTF8 | ConvertFrom-Json | ForEach-Object { $_ }); $hechos = 0; $fallos = 0
     foreach ($id in $ids) {
       try { $x = $ns.GetItemFromID([string]$id); $x.UnRead = $false; $x.Save(); $hechos++ } catch { $fallos++ }
     }

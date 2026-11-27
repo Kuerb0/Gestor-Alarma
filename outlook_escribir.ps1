@@ -6,7 +6,7 @@
 param([Parameter(Mandatory)][string]$Entrada, [string]$Calendario = '')
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$ops = @(Get-Content -LiteralPath $Entrada -Raw -Encoding UTF8 | ConvertFrom-Json)
+$ops = @(Get-Content -LiteralPath $Entrada -Raw -Encoding UTF8 | ConvertFrom-Json | ForEach-Object { $_ })   # ForEach: PS 5.1 entrega el array JSON como UN objeto y @() no lo desenrolla
 
 $yaAbierto = $false
 try { $null = [Runtime.InteropServices.Marshal]::GetActiveObject('Outlook.Application'); $yaAbierto = $true } catch { }
