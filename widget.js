@@ -1,7 +1,7 @@
 // Widget del escritorio: la misma gráfica que una pestaña del panel (tipo = tiempo | sistema), en su propia ventana.
 const $ = id => document.getElementById(id);
 const tipo = ['sistema', 'agenda', 'notas', 'alarmas'].includes(new URLSearchParams(location.search).get('tipo')) ? new URLSearchParams(location.search).get('tipo') : 'tiempo';
-let notas = null, listaAl = null, formatoAl = 'adaptativo', firmaAl = '', correo = null, meteo = null, meteoT = 0, diaSel = 0, sis = null, bateria = null, ciudadSel = '';
+let buscaAl = false, qAl = '', notas = null, listaAl = null, formatoAl = 'adaptativo', firmaAl = '', correo = null, meteo = null, meteoT = 0, diaSel = 0, sis = null, bateria = null, ciudadSel = '';
 try { ciudadSel = localStorage.getItem('wciudad') || ''; } catch {}
 document.getElementById('w').classList.toggle('sis', tipo === 'sistema' || tipo === 'notas' || tipo === 'alarmas');
 function pinta() {
@@ -17,14 +17,15 @@ function pintaNotasW() { // si se está escribiendo una nota, solo se repinta la
   $('w-c').innerHTML = htmlNotas(notas, cfg);
 }
 // Alarmas: el campo de crear conserva texto, foco y mensaje (solo se repinta la lista); cada segundo solo se actualizan los tiempos, salvo que cambien las filas visibles o su orden
+const optsAl = () => ({ ...cfg, buscar: buscaAl && cfg.crear !== false, q: buscaAl ? qAl : '' }); // buscaAl: el campo busca entre las alarmas en vez de crear (lupa)
 function pintaAlarmasW() {
-  const l = $('w-c').querySelector('.wa-lista'), ahora = Date.now();
+  const l = $('w-c').querySelector('.wa-lista'), ahora = Date.now(), lupa = $('wa-buscar');
   firmaAl = firmaAlarmas(ahora);
-  if (l && !!$('wa-texto') === (cfg.crear !== false)) { const tmp = document.createElement('div'); tmp.innerHTML = htmlAlarmas(listaAl, cfg, ahora, formatoAl); l.replaceWith(tmp.querySelector('.wa-lista')); }
-  else $('w-c').innerHTML = htmlAlarmas(listaAl, cfg, ahora, formatoAl);
+  if (l && !!$('wa-texto') === (cfg.crear !== false) && (!lupa || (lupa.getAttribute('aria-pressed') === 'true') === optsAl().buscar)) { const tmp = document.createElement('div'); tmp.innerHTML = htmlAlarmas(listaAl, optsAl(), ahora, formatoAl); l.replaceWith(tmp.querySelector('.wa-lista')); }
+  else $('w-c').innerHTML = htmlAlarmas(listaAl, optsAl(), ahora, formatoAl);
   colorea($('w-c'));
 }
-const firmaAlarmas = ahora => { const { vis, resto } = visiblesAlarmas(listaAl, cfg, ahora); return vis.map(a => a.id).join() + '|' + resto + '|' + (listaAl === null); };
+const firmaAlarmas = ahora => { const { vis, resto } = visiblesAlarmas(listaAl, optsAl(), ahora); return vis.map(a => a.id).join() + '|' + resto + '|' + (listaAl === null); };
 function ticAl() { const ahora = Date.now(); if (firmaAlarmas(ahora) !== firmaAl) pintaAlarmasW(); else ticAlarmas($('w-c'), listaAl, formatoAl, ahora); }
 const ETIQ_AL = { cuenta: 'cuenta atrás', fecha: 'alarma', crono: 'cronómetro', recurrente: 'repetición' }, p2 = n => String(n).padStart(2, '0');
 function mensajeAl(txt, mal, negrita) { const v = $('wa-vista'); if (!v) return; v.className = mal ? 'mal' : ''; v.textContent = ''; if (negrita) { const b = document.createElement('b'); b.textContent = negrita; v.append(b, ' ' + txt); } else v.textContent = txt; }
@@ -104,18 +105,18 @@ document.querySelectorAll('[data-d]').forEach(g => {
 });
 let alto = 0;
 new ResizeObserver(() => { if ($('w').classList.contains('fijo')) return; const h = Math.ceil($('w').getBoundingClientRect().height) + 20; if (h !== alto) { alto = h; api.widgetAlto(h); } }).observe($('w'));
-const ESTILOS = ['consumo', 'cristal', 'fino', 'flotante', 'solido'];
+const ESTILOS = ['consumo', 'cristal', 'fino', 'flotante', 'liquido', 'solido'];
 let estilo = new URLSearchParams(location.search).get('estilo'); if (!ESTILOS.includes(estilo)) estilo = 'consumo';
 try { if (!localStorage.getItem('estilo-consumo-' + tipo)) { localStorage.setItem('estilo-consumo-' + tipo, '1'); if (estilo !== 'consumo') { estilo = 'consumo'; api.widgetEstilo(estilo); } } } catch {} // una vez: todos los widgets pasan al estilo de Consumo
 const aplicaEstilo = () => { $('w').dataset.estilo = estilo; $('w-e').title = 'Estilo: ' + estilo + ' (clic para cambiar)'; };
 aplicaEstilo();
 $('w-e').onclick = () => { estilo = ESTILOS[(ESTILOS.indexOf(estilo) + 1) % ESTILOS.length]; aplicaEstilo(); api.widgetEstilo(estilo); };
-$('w-c').addEventListener('input', e => { if (e.target.id === 'wa-texto') vistaAl(); });
+$('w-c').addEventListener('input', e => { if (e.target.id !== 'wa-texto') return; if (buscaAl) { qAl = e.target.value; pintaAlarmasW(); } else vistaAl(); });
 $('w-c').addEventListener('keydown', async e => { // Alarmas: Intro crea, Esc vacía
   if (e.target.id !== 'wa-texto') return;
-  if (e.key === 'Escape') { e.target.value = ''; mensajeAl(''); return; }
+  if (e.key === 'Escape') { if (buscaAl) cambiaBusqueda(false); else { e.target.value = ''; mensajeAl(''); } return; }
   if (e.key !== 'Enter') return;
-  e.preventDefault(); const r = Tiempo.parsear(e.target.value, Date.now()); if (!r.ok) return mensajeAl(r.error, true);
+  e.preventDefault(); if (buscaAl) return; const r = Tiempo.parsear(e.target.value, Date.now()); if (!r.ok) return mensajeAl(r.error, true);
   const g = await window.alarmas.crear(r.rec); if (!g.ok) return mensajeAl(g.error, true);
   e.target.value = ''; mensajeAl('Añadida ✔');
 });
@@ -134,7 +135,9 @@ $('w').addEventListener('pointerdown', e => {
 });
 $('w-x').onclick = () => api.widgetCerrar();
 $('w-d').onclick = () => api.widgetDuplicar();
+function cambiaBusqueda(v) { buscaAl = v; qAl = ''; pintaAlarmasW(); const t = $('wa-texto'); if (t) t.focus(); }
 $('w-c').addEventListener('click', e => {
+  if (e.target.closest('#wa-buscar')) { cambiaBusqueda(!buscaAl); return; }
   const x = e.target.closest('.wa-x'); if (x) { window.alarmas.borrar(x.dataset.id); return; } // Alarmas: × de las propias
   const b = e.target.closest('.fr-b'), c = e.target.closest('.ciu-n');
   if (b && !b.disabled) { diaSel += +b.dataset.d; pinta(); }

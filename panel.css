@@ -11,8 +11,8 @@ body.humo { background: linear-gradient(135deg, #3b6fd1, #c94f8a 55%, #f0a04b); 
 #panel { position: fixed; inset: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px;
   background: radial-gradient(130% 38% at 0% 0%, color-mix(in srgb, var(--acento) 48%, transparent), transparent 72%), radial-gradient(90% 30% at 100% 100%, color-mix(in srgb, var(--acento) 10%, transparent), transparent 70%),
     linear-gradient(180deg, var(--brillo), transparent 26%, transparent 72%, var(--base)), linear-gradient(150deg, color-mix(in srgb, var(--acento) 7%, var(--tinte)), var(--tinte));
-  box-shadow: inset 1px 0 0 var(--b1), inset 14px 0 22px -16px var(--brillo), inset 0 1px 0 var(--b2); }
-#panel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1px; pointer-events: none; background: linear-gradient(180deg, #fff, var(--b1) 22%, var(--b2) 60%, var(--b1)); opacity: .9; }
+  box-shadow: inset 1px 0 0 var(--b1), inset 14px 0 22px -16px var(--brillo), inset 0 1px 0 var(--b2), inset 9px 0 12px -8px rgba(255,100,100,.3), inset 0 9px 12px -8px rgba(255,255,255,.22); }
+#panel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; pointer-events: none; background: linear-gradient(180deg, #fff, rgba(255,130,130,.85) 16%, var(--b1) 36%, rgba(120,170,255,.85) 62%, rgba(255,215,130,.7) 82%, #fff); opacity: .9; }
 header { display: flex; justify-content: space-between; align-items: flex-start; padding: 2px 4px; }
 #hora { font-size: 34px; font-weight: 300; line-height: 1; letter-spacing: -1px; }
 #fecha { color: var(--sec); margin-top: 4px; } #fecha::first-letter { text-transform: uppercase; }
@@ -37,6 +37,8 @@ button svg { display: block; margin: auto; }
   content: ""; position: absolute; left: 6%; right: 6%; top: 1px; height: 42%; border-radius: inherit; border-bottom-left-radius: 60% 80%; border-bottom-right-radius: 60% 80%; pointer-events: none;
   background: linear-gradient(180deg, var(--brillo), transparent); opacity: .7; }
 .tarjeta { border-radius: 22px; padding: 10px 12px; flex: none; }
+/* líquido (como el estilo «líquido» de los widgets): cada tarjeta es una lente pequeña, con bisel de luz arriba-izquierda y sombra abajo-derecha */
+#panel :is(.tarjeta, .ahora, .franja, .dias, .barra, .fila, .wa-f, #cbarra, #tabs, .btn-sec, .btn-txt) { box-shadow: 0 6px 18px var(--sombra), inset 1.5px 1.5px 0 -.5px rgba(255,255,255,.5), inset -1.5px -1.5px 0 -.5px rgba(255,255,255,.18), inset 0 0 10px rgba(255,255,255,.07); }
 h2 { font-size: 12px; font-weight: 600; color: var(--sec); text-transform: uppercase; letter-spacing: .6px; margin: 4px 0; display: flex; align-items: center; gap: 8px; }
 .vacio { color: var(--sec); padding: 4px 0; }
 .aviso { color: var(--ambar); font-size: 11px; text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: auto; }
@@ -351,7 +353,11 @@ select.campo option { background: #2b2f38; color: #fff; }
 .wg-v[data-tema] { text-shadow: var(--halo); } /* vista previa de la galería */
 
 /* widget de Alarmas (htmlAlarmas en graficos.js): campo de crear, vista previa y una fila por alarma */
-#w-c > .campo + #wa-vista, #w-c > .campo:disabled + .wa-lista { margin-top: 4px; }
+#w-c > .campo + #wa-vista, #w-c > .campo:disabled + .wa-lista, #w-c > .wa-campo + #wa-vista, #w-c > .wa-campo + .wa-lista { margin-top: 4px; }
+/* campo de Alarmas con lupa: el mismo campo crea o busca (la lupa alterna) */
+.wa-campo { position: relative; } .wa-campo .campo { padding-right: 36px; }
+#wa-buscar { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; padding: 0; border-radius: 12px; font-size: 13px; line-height: 1; background: none; box-shadow: none; }
+#wa-buscar:hover { background: var(--vidrio-h); } #wa-buscar[aria-pressed=true] { background: var(--ac-v); }
 #wa-texto { width: 100%; display: block; font-size: 12.5px; }
 #wa-vista { min-height: 16px; margin: 3px 2px 6px; color: var(--sec); font-size: 11.5px; } #wa-vista.mal { color: var(--rojo); } #wa-vista b { color: var(--ac-t); }
 .wa-f { display: grid; grid-template-columns: 1fr auto 20px; gap: 8px; align-items: center; margin-bottom: 5px; padding: 7px 12px; border-radius: 17px; background: var(--vidrio); box-shadow: 0 6px 18px var(--sombra); }

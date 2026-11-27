@@ -36,6 +36,17 @@ body { padding: 10px; height: auto; overflow: hidden; }
 #w[data-estilo=consumo] .evento[data-c]::before { background: color-mix(in srgb, var(--c) 70%, transparent); }
 #w[data-estilo=consumo] .barra progress, #w[data-estilo=consumo] .barra progress::-webkit-progress-bar { background: var(--pista-w, rgba(128,128,128,.12)); box-shadow: none; }
 /* sÃ³lido: el de antes */
+/* líquido: «liquid glass». Una ventana transparente no puede refractar el escritorio (el CSS solo ve lo que hay dentro de la ventana), así que la lente se simula:
+   reborde con bisel (luz arriba-izquierda, sombra abajo-derecha), halo interior, canto con descomposición de color (rojo a un lado, azul al otro) y reflejo diagonal. */
+#w[data-estilo=liquido] { border-radius: 30px; --wfondo: rgba(255,255,255,.06); --wborde: transparent; --vidrio: rgba(255,255,255,.07); --vidrio-h: rgba(255,255,255,.18); --b1: rgba(255,255,255,.42); --b2: rgba(255,255,255,.14); --sombra: rgba(0,0,0,.22); --brillo: rgba(255,255,255,.2);
+  background: linear-gradient(125deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.04) 34%, rgba(255,255,255,0) 62%, rgba(255,255,255,.1) 100%), var(--wfondo);
+  box-shadow: inset 2px 2px 1px -1px rgba(255,255,255,.75), inset -2px -2px 1px -1px rgba(255,255,255,.32), inset 0 0 18px rgba(255,255,255,.14),
+    inset 7px 0 10px -6px rgba(255,92,92,.45), inset -7px 0 10px -6px rgba(88,150,255,.5), inset 0 7px 10px -6px rgba(255,255,255,.3), 0 14px 34px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.18); }
+#w[data-estilo=liquido]::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none; z-index: 4;
+  background: conic-gradient(from 210deg, rgba(255,255,255,.95), rgba(255,120,120,.55) 18%, rgba(255,255,255,.12) 34%, rgba(110,160,255,.6) 52%, rgba(255,255,255,.9) 68%, rgba(255,210,120,.5) 84%, rgba(255,255,255,.95));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+#w[data-tema=oscuro][data-estilo=liquido] { --wfondo: rgba(255,255,255,.3); --vidrio: rgba(255,255,255,.28); --vidrio-h: rgba(255,255,255,.55); --b1: rgba(255,255,255,.9); --b2: rgba(255,255,255,.45); --brillo: rgba(255,255,255,.5); --sombra: rgba(30,40,70,.18); }
+#w[data-estilo=liquido] .wa-f, #w[data-estilo=liquido] .fila, #w[data-estilo=liquido] .evento, #w[data-estilo=liquido] .wev, #w[data-estilo=liquido] #wa-texto, #w[data-estilo=liquido] #wn-texto { box-shadow: inset 1.5px 1.5px 0 -.5px rgba(255,255,255,.5), inset -1.5px -1.5px 0 -.5px rgba(255,255,255,.18), inset 0 0 10px rgba(255,255,255,.07), 0 4px 12px rgba(0,0,0,.14); } /* las tarjetas internas también son lentes pequeñas */
 #w[data-estilo=solido] { --wfondo: rgba(20,24,34,.8); --vidrio: rgba(255,255,255,.07); --sombra: rgba(0,0,0,.4); --ts: rgba(0,0,0,0); }
 #w[data-tema=oscuro][data-estilo=solido] { --wfondo: rgba(250,252,255,.82); --vidrio: rgba(255,255,255,.55); }
 
@@ -72,3 +83,4 @@ body { padding: 10px; height: auto; overflow: hidden; }
 #w.fijo #w-c { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 #w.fijo #w-c::-webkit-scrollbar { display: none; }
 #wn-texto, #wa-texto { border: 1px solid var(--b1, rgba(128,128,128,.45)); background: var(--campo-n, rgba(128,128,128,.10)); border-radius: 12px; padding: 6px 9px; } /* el cuadro de nota nueva se ve en todos los estilos (en consumo el fondo es transparente) */
+#w #wa-texto { background: var(--vidrio); border-color: var(--b1); border-radius: 17px; padding: 7px 36px 7px 12px; } /* el campo de Alarmas es una tarjeta más: claro como las filas, no un hueco oscuro */

@@ -392,7 +392,7 @@ function nuevoWidget(tipo, c, desde) { // añade otro widget de `tipo`; `desde`:
 const idWidget = wc => [...widgets].find(([, w]) => !w.isDestroyed() && w.webContents === wc)?.[0];
 ipcMain.on('widget:poner', (_, tipo, v, c) => v === true ? nuevoWidget(tipo, c) : abiertosDe(tipo).forEach(id => ponerWidget(id, false))); // desde el panel: añadir otro / quitar los de ese tipo
 ipcMain.on('widget:duplicar', e => { const id = idWidget(e.sender); if (id) nuevoWidget(tipoDe(id), undefined, id); });
-ipcMain.on('widget:estilo', (e, est) => { const id = idWidget(e.sender); if (!id || !['consumo', 'cristal', 'fino', 'flotante', 'solido'].includes(est)) return; ponGw(id, { estilo: est }); guardarAjustes(); });
+ipcMain.on('widget:estilo', (e, est) => { const id = idWidget(e.sender); if (!id || !['consumo', 'cristal', 'fino', 'flotante', 'liquido', 'solido'].includes(est)) return; ponGw(id, { estilo: est }); guardarAjustes(); });
 ipcMain.on('widget:tema', (e, t) => {
   const id = idWidget(e.sender); if (!id || !TEMAS.includes(t)) return;
   ponGw(id, { tema: t }); guardarAjustes(); enviarTemaW(id); pintarWidgets();
@@ -928,7 +928,7 @@ async function humo() {
     await js(ws, `document.getElementById('w-g').click(); document.querySelector('[data-niv=Mínimo]').click()`); await esp(200);
     if (await n(ws, '.barra') !== 2) fallos.push('widget Sistema: el nivel Mínimo no deja CPU y RAM');
     await js(ws, `document.querySelector('[data-niv=Completo]').click(); document.getElementById('w-g').click()`); await esp(200);
-    for (const est of ['cristal', 'fino', 'flotante', 'solido']) {
+    for (const est of ['cristal', 'fino', 'flotante', 'liquido', 'solido']) {
       await js(wt, `document.getElementById('w').dataset.estilo !== '${est}' && document.getElementById('w-e').click()`); await js(ws, `document.getElementById('w').dataset.estilo !== '${est}' && document.getElementById('w-e').click()`); await esp(300);
       await captura('widget-tiempo-' + est, wt); await captura('widget-sistema-' + est, ws);
     }

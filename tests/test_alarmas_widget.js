@@ -23,4 +23,9 @@ h = htmlAlarmas(l, { n: 3 }, ah);
 assert((h.match(/class="wa-f/g) || []).length === 3 && h.includes('+1 más'), 'n = 3 y «+N más»');
 assert.strictEqual(visiblesAlarmas(l, { n: 99 }, ah).vis.length, 4, 'n inválido = 5; 4 activas');
 assert(htmlAlarmas([], {}, ah).includes('Sin alarmas') && htmlAlarmas(null, {}, ah).includes('Cargando'), 'vacía / sin cargar');
+// búsqueda: por nombre, sin mayúsculas ni tildes; con q se enseñan hasta 20 (ignora n)
+assert.deepStrictEqual(visiblesAlarmas(l, { q: 'ESTUDIÓ' }, ah).vis.map(x => x.id), ['d'], 'búsqueda sin tildes ni mayúsculas');
+assert.strictEqual(visiblesAlarmas(l, { q: 'zzz' }, ah).vis.length, 0, 'búsqueda sin resultados');
+assert(htmlAlarmas(l, { buscar: true, q: 'zzz' }, ah).includes('Sin resultados') && !htmlAlarmas(l, { buscar: true, q: 'zzz' }, ah).includes('id="wa-vista"'), 'sin resultados y sin vista previa al buscar');
+assert(htmlAlarmas(l, {}, ah).includes('id="wa-buscar"') && htmlAlarmas(l, { buscar: true, q: 'Es' }, ah).includes('value="Es"'), 'lupa y valor de la búsqueda');
 console.log('test_alarmas_widget OK');

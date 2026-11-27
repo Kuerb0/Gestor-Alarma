@@ -207,9 +207,10 @@ function htmlNotas(lista, o = {}) {
 // o.n = cuántas filas (3/5/8), o.externas = false quita las de Post-It y Outlook, o.crear = false quita el campo (en la galería, uid, sale desactivado). Cada fila lleva data-id: `ticAlarmas` solo
 // actualiza el tiempo, la fase y el color de las que ya están pintadas (sin rehacer el DOM cada segundo). Los colores van en data-col (colorea) o los pone ticAlarmas.
 const ETIQ_ORIGEN = { outlook: 'Outlook', postit: 'Post-It' };
-function visiblesAlarmas(lista, o = {}, ahora = Date.now()) { // las que se enseñan, en orden (lo que suena primero) y cuántas quedan fuera
-  const n = [3, 5, 8].includes(o.n) ? o.n : 5;
-  const ord = Tiempo.ordenar((lista || []).filter(a => (o.externas !== false || !a.origen) && Tiempo.fase(a, ahora).fase !== 'fin'), ahora);
+const normBusq = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+function visiblesAlarmas(lista, o = {}, ahora = Date.now()) { // las que se enseñan, en orden (lo que suena primero) y cuántas quedan fuera. o.q = búsqueda por nombre (hasta 20 resultados)
+  const q = normBusq(o.q), n = q ? 20 : [3, 5, 8].includes(o.n) ? o.n : 5;
+  const ord = Tiempo.ordenar((lista || []).filter(a => (o.externas !== false || !a.origen) && Tiempo.fase(a, ahora).fase !== 'fin' && (!q || normBusq(a.nombre).includes(q))), ahora);
   return { vis: ord.slice(0, n), resto: Math.max(0, ord.length - n) };
 }
 const textoAl = (a, f, formato) => f.fase === 'perdida' ? 'PERDIDA' : f.fase === 'sonando' && f.ms === undefined ? '00:00' : Tiempo.formatear(f.ms, a.tipo === 'crono', formato);
@@ -217,7 +218,7 @@ const colorAl = (a, f) => f.fase === 'activa' ? Tiempo.color(a.tipo === 'crono' 
 function htmlFilasAlarmas(lista, o = {}, ahora = Date.now(), formato = 'adaptativo') {
   if (!lista) return '<div class="vacio">Cargando…</div>';
   const { vis, resto } = visiblesAlarmas(lista, o, ahora);
-  if (!vis.length) return '<div class="vacio">Sin alarmas</div>';
+  if (!vis.length) return `<div class="vacio">${normBusq(o.q) ? 'Sin resultados' : 'Sin alarmas'}</div>`;
   return vis.map(a => {
     const f = Tiempo.fase(a, ahora), col = colorAl(a, f);
     return `<div class="wa-f${f.fase === 'sonando' ? ' sonando' : f.fase === 'perdida' ? ' perdida' : ''}" data-id="${esc(a.id)}"><span class="wa-n">${esc(a.nombre)}${a.origen ? `<small>${ETIQ_ORIGEN[a.origen] || esc(a.origen)}</small>` : ''}</span>` +
@@ -225,7 +226,9 @@ function htmlFilasAlarmas(lista, o = {}, ahora = Date.now(), formato = 'adaptati
   }).join('') + (resto ? `<div class="wa-mas">+${resto} más</div>` : '');
 }
 function htmlAlarmas(lista, o = {}, ahora = Date.now(), formato = 'adaptativo') {
-  const campo = o.crear === false ? '' : `<input ${o.uid ? 'disabled' : 'id="wa-texto"'} class="campo" autocomplete="off" maxlength="120" aria-label="Nueva alarma" placeholder="Pizza 25m · Dentista mañana 10:00">${o.uid ? '' : '<div id="wa-vista"></div>'}`;
+  // o.buscar: el mismo campo sirve para buscar entre las alarmas (la lupa alterna); la vista previa solo sale al crear
+  const campo = o.crear === false ? '' : o.uid ? '<input disabled class="campo" autocomplete="off" maxlength="120" aria-label="Nueva alarma" placeholder="Pizza 25m · Dentista mañana 10:00">'
+    : `<div class="wa-campo"><input id="wa-texto" class="campo" autocomplete="off" maxlength="120" aria-label="${o.buscar ? 'Buscar alarma' : 'Nueva alarma'}" placeholder="${o.buscar ? 'Buscar alarma…' : 'Pizza 25m · Dentista mañana 10:00'}" value="${o.buscar ? esc(o.q || '') : ''}"><button id="wa-buscar" type="button" aria-pressed="${!!o.buscar}" aria-label="Buscar entre las alarmas" title="${o.buscar ? 'Volver a crear (Esc)' : 'Buscar entre las alarmas'}">${o.buscar ? '✕' : '🔍'}</button></div>${o.buscar ? '' : '<div id="wa-vista"></div>'}`;
   return campo + `<div class="wa-lista">${htmlFilasAlarmas(lista, o, ahora, formato)}</div>`;
 }
 function ticAlarmas(raiz, lista, formato, ahora = Date.now()) { // actualiza en su sitio las filas ya pintadas
